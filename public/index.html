@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Meeting CRM</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">M</div>
+        <span>Meeting CRM</span>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-view="pipeline">
+          <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h12M3 18h6"/></svg>
+          Pipeline
+        </button>
+        <button class="nav-item" data-view="contacts">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+          Contacts
+        </button>
+        <button class="nav-item" data-view="settings">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+          API / Settings
+        </button>
+      </nav>
+      <div class="sidebar-footer">Bookings flow in automatically from your n8n / Zapier / Make workflow.</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 id="viewTitle">Pipeline</h1>
+          <p id="viewSubtitle">Everyone who's booked a meeting with you, staged by where they are.</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="search">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5"/></svg>
+            <input id="searchInput" type="text" placeholder="Search contacts..." />
+          </div>
+          <button class="btn btn-primary" id="addContactBtn">+ Add Contact</button>
+        </div>
+      </header>
+
+      <section class="stats">
+        <div class="stat-card">
+          <span class="stat-label">Total Contacts</span>
+          <span class="stat-value" id="statTotal">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">New This Week</span>
+          <span class="stat-value" id="statNew">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Active Clients</span>
+          <span class="stat-value" id="statClients">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Pipeline Value</span>
+          <span class="stat-value" id="statValue">$0</span>
+        </div>
+      </section>
+
+      <section id="pipelineView" class="view">
+        <div class="board" id="board"></div>
+      </section>
+
+      <section id="contactsView" class="view hidden">
+        <div class="table-wrap">
+          <table class="contacts-table">
+            <thead>
+              <tr>
+                <th>Name</th><th>Email</th><th>Phone</th><th>Service</th><th>Booked</th><th>Stage</th><th>Value</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="contactsTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="settingsView" class="view hidden">
+        <div class="settings-card">
+          <h2>Webhook ingest</h2>
+          <p>Point your n8n / Zapier / Make booking workflow at this endpoint to add every new booking to the CRM automatically.</p>
+          <pre id="webhookUrl">POST /api/webhook/booking</pre>
+          <p class="muted">Body fields accepted (any casing): <code>name</code>, <code>email</code>, <code>phone</code>, <code>service</code>, <code>bookingDate</code>, <code>bookingTime</code>, <code>meetingLink</code>, <code>notes</code>, <code>value</code>. New bookings land in the "New Booking" stage.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-overlay hidden" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modalTitle">Add Contact</h2>
+        <button class="modal-close" id="modalClose">&times;</button>
+      </div>
+      <form id="contactForm">
+        <input type="hidden" id="contactId" />
+        <div class="form-row">
+          <label>Name<input required id="fName" type="text" /></label>
+          <label>Email<input id="fEmail" type="email" /></label>
+        </div>
+        <div class="form-row">
+          <label>Phone<input id="fPhone" type="text" /></label>
+          <label>Service
+            <select id="fService">
+              <option value="">—</option>
+              <option>Customer Support</option>
+              <option>Appointment Setting</option>
+              <option>CRM Management</option>
+              <option>Lead Follow-Up</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Booking Date<input id="fDate" type="text" placeholder="2026-09-10" /></label>
+          <label>Booking Time<input id="fTime" type="text" placeholder="10:00 AM" /></label>
+        </div>
+        <div class="form-row">
+          <label>Meeting Link<input id="fLink" type="text" /></label>
+          <label>Value ($)<input id="fValue" type="number" min="0" /></label>
+        </div>
+        <label class="full">Notes<textarea id="fNotes" rows="3"></textarea></label>
+        <label class="full">Stage
+          <select id="fStage">
+            <option value="new">New Booking</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="held">Meeting Held</option>
+            <option value="proposal">Proposal Sent</option>
+            <option value="client">Client</option>
+            <option value="lost">Lost</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-danger hidden" id="deleteBtn">Delete</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn btn-ghost" id="cancelBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
