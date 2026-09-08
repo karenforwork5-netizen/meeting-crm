@@ -28,6 +28,7 @@
         </div>
       </div>
       <nav class="nav" aria-label="Primary">
+        <div class="nav-group-label">Main</div>
         <button class="nav-item active" data-view="dashboard">
           <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 3l1.9 4.6L18 9l-4.1 1.4L12 15l-1.9-4.6L6 9l4.1-1.4z"/></svg></span>
           Dashboard
@@ -44,19 +45,44 @@
           <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
           Appointments
         </button>
+        <button class="nav-item" data-view="calendar">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 10h18M8 3v4M16 3v4"/><rect x="3" y="5" width="18" height="16" rx="2"/></svg></span>
+          Calendar
+        </button>
+        <button class="nav-item" data-view="tasks">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+          Tasks
+        </button>
         <button class="nav-item" data-view="followups">
           <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><path d="M21 3v6h-6"/></svg></span>
           Follow-Ups
+        </button>
+
+        <div class="nav-group-label">Client Operations</div>
+        <button class="nav-item" data-view="billing">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+          Billing
+        </button>
+        <button class="nav-item" data-view="documents">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+          Documents
+        </button>
+        <button class="nav-item" data-view="projects">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>
+          Projects
+        </button>
+
+        <div class="nav-group-label">Insights</div>
+        <button class="nav-item" data-view="analytics">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 20V10M12 20V4M20 20v-7"/></svg></span>
+          Analytics
         </button>
         <button class="nav-item" data-view="automations">
           <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg></span>
           Automations
         </button>
-        <div class="nav-divider"></div>
-        <button class="nav-item" data-view="analytics">
-          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 20V10M12 20V4M20 20v-7"/></svg></span>
-          Analytics
-        </button>
+
+        <div class="nav-group-label">System</div>
         <button class="nav-item" data-view="settings">
           <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></span>
           Settings
@@ -93,8 +119,18 @@
       <!-- DASHBOARD -->
       <section id="dashboardView" class="view">
         <div class="dash-greeting" style="padding:0;">
-          <h1 id="greetingText" style="margin:0 0 2px;">Good morning, Karen 👋</h1>
-          <p>Here's what's happening with your pipeline today.</p>
+          <h1 id="greetingText" style="margin:0 0 4px;">Good morning, Karen 👋</h1>
+          <p class="dash-status-line" id="dashStatusLine">Here's what's happening with your pipeline today.</p>
+        </div>
+
+        <div class="quick-actions-bar" id="quickActionsBar">
+          <span class="qa-label">Quick Actions</span>
+          <button class="qa-btn" id="qaAddContact"><span>+</span> Add Contact</button>
+          <button class="qa-btn" id="qaSchedule"><span>📅</span> Schedule</button>
+          <button class="qa-btn" id="qaCreateTask"><span>✓</span> Create Task</button>
+          <button class="qa-btn" id="qaAddFollowUp"><span>↻</span> Add Follow-Up</button>
+          <button class="qa-btn" id="qaCreateInvoice"><span>💰</span> Create Invoice</button>
+          <button class="qa-btn" id="qaUploadDocument"><span>📄</span> Upload Document</button>
         </div>
 
         <div class="stats" style="padding-left:0;padding-right:0;">
@@ -119,7 +155,7 @@
             <span class="stat-value" id="kpiFollowups">0</span>
             <span class="stat-delta muted" id="kpiFollowupsDelta">—</span>
           </div>
-          <div class="stat-card">
+          <div class="stat-card stat-card-highlight">
             <div class="stat-top"><span class="stat-label">Pipeline Value</span>
               <span class="stat-icon"><svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
             </div>
@@ -128,11 +164,24 @@
           </div>
         </div>
 
-        <div class="section-heading"><h2>Today's Focus</h2></div>
-        <div class="focus-grid" id="focusGrid"></div>
+        <div class="section-heading"><h2>Today's Focus</h2><button class="see-all" id="focusViewAll">View all →</button></div>
+        <div class="focus-feed" id="focusGrid"></div>
 
-        <div class="section-heading">
-          <h2>Analytics</h2>
+        <div class="two-col" style="margin-top:22px;">
+          <div class="panel">
+            <h3 style="margin:0 0 4px;font-size:14.5px;">Client Health</h3>
+            <p class="muted-sub">Computed from overdue follow-ups, tasks, and invoices.</p>
+            <div id="clientHealthWidget"></div>
+          </div>
+          <div class="panel">
+            <h3 style="margin:0 0 4px;font-size:14.5px;">Recent Activity</h3>
+            <p class="muted-sub">What's happened lately, across your pipeline.</p>
+            <div class="mini-list" id="recentList"></div>
+          </div>
+        </div>
+
+        <div class="section-heading" style="margin-top:26px;">
+          <h2>Performance</h2>
           <div class="chart-toggle" id="chartToggle">
             <button class="chart-toggle-btn active" data-metric="leads">Leads</button>
             <button class="chart-toggle-btn" data-metric="value">Pipeline Value</button>
@@ -149,11 +198,6 @@
             <div id="funnelWrap"></div>
           </div>
         </div>
-
-        <div class="section-heading"><h2>Recent Activity</h2></div>
-        <div class="panel">
-          <div class="mini-list" id="recentList"></div>
-        </div>
       </section>
 
       <!-- PIPELINE -->
@@ -163,11 +207,18 @@
 
       <!-- CONTACTS -->
       <section id="contactsView" class="view hidden">
+        <div class="filter-chips" id="contactFilters">
+          <button class="filter-chip active" data-filter="all">All</button>
+          <button class="filter-chip" data-filter="leads">Leads</button>
+          <button class="filter-chip" data-filter="clients">Clients</button>
+          <button class="filter-chip" data-filter="active">Active</button>
+          <button class="filter-chip" data-filter="inactive">Inactive</button>
+        </div>
         <div class="table-wrap">
           <table class="contacts-table">
             <thead>
               <tr>
-                <th>Name</th><th>Email</th><th>Phone</th><th>Service</th><th>Booked</th><th>Stage</th><th>Value</th><th></th>
+                <th>Name</th><th>Company</th><th>Email</th><th>Phone</th><th>Stage</th><th>Health</th><th>Value</th><th></th>
               </tr>
             </thead>
             <tbody id="contactsTableBody"></tbody>
@@ -181,9 +232,95 @@
         <div id="appointmentsContent"></div>
       </section>
 
+      <!-- CALENDAR -->
+      <section id="calendarView" class="view hidden">
+        <div class="two-col">
+          <div class="panel">
+            <div class="calendar-header">
+              <button class="icon-btn" id="calPrev" aria-label="Previous month"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+              <h3 id="calMonthLabel">Month</h3>
+              <button class="icon-btn" id="calNext" aria-label="Next month"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+            </div>
+            <div class="calendar-grid" id="calendarGrid"></div>
+          </div>
+          <div class="panel">
+            <h3 style="margin:0 0 4px;font-size:14.5px;">Upcoming</h3>
+            <p class="muted-sub">Everything on your calendar, soonest first.</p>
+            <div id="upcomingList" class="mini-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TASKS -->
+      <section id="tasksView" class="view hidden">
+        <div class="filter-chips" id="taskFilters">
+          <button class="filter-chip active" data-filter="all">All</button>
+          <button class="filter-chip" data-filter="today">Today</button>
+          <button class="filter-chip" data-filter="upcoming">Upcoming</button>
+          <button class="filter-chip" data-filter="overdue">Overdue</button>
+          <button class="filter-chip" data-filter="completed">Completed</button>
+        </div>
+        <div class="panel" style="margin-bottom:16px;">
+          <form id="taskForm" class="task-quick-add">
+            <input id="taskTitle" type="text" placeholder="Task title..." required />
+            <select id="taskContact"><option value="">No client</option></select>
+            <select id="taskPriority"><option>Medium</option><option>High</option><option>Low</option></select>
+            <input id="taskDue" type="date" />
+            <button type="submit" class="btn btn-primary btn-sm">Add</button>
+          </form>
+        </div>
+        <div id="tasksContent"></div>
+      </section>
+
       <!-- FOLLOW-UPS -->
       <section id="followupsView" class="view hidden">
         <div id="followupsContent"></div>
+      </section>
+
+      <!-- BILLING -->
+      <section id="billingView" class="view hidden">
+        <div class="stats" style="padding-left:0;padding-right:0;">
+          <div class="stat-card"><span class="stat-label">Total Outstanding</span><span class="stat-value" id="billOutstanding">$0</span></div>
+          <div class="stat-card"><span class="stat-label">Paid This Month</span><span class="stat-value" id="billPaid">$0</span></div>
+          <div class="stat-card"><span class="stat-label">Overdue</span><span class="stat-value" id="billOverdue">$0</span></div>
+          <div class="stat-card"><span class="stat-label">Upcoming</span><span class="stat-value" id="billUpcoming">$0</span></div>
+        </div>
+        <div class="section-heading">
+          <h2>Invoices</h2>
+          <button class="btn btn-primary btn-sm" id="createInvoiceBtn">+ Create Invoice</button>
+        </div>
+        <div class="table-wrap">
+          <table class="contacts-table">
+            <thead><tr><th>Client</th><th>Invoice #</th><th>Amount</th><th>Issue Date</th><th>Due Date</th><th>Status</th><th></th></tr></thead>
+            <tbody id="invoicesTableBody"></tbody>
+          </table>
+          <div id="invoicesEmpty"></div>
+        </div>
+      </section>
+
+      <!-- DOCUMENTS -->
+      <section id="documentsView" class="view hidden">
+        <div class="section-heading">
+          <h2>Documents</h2>
+          <button class="btn btn-primary btn-sm" id="uploadDocumentBtn">+ Upload Document</button>
+        </div>
+        <input type="file" id="documentFileInput" class="hidden" />
+        <div class="table-wrap">
+          <table class="contacts-table">
+            <thead><tr><th>Document</th><th>Client</th><th>Type</th><th>Date</th><th></th></tr></thead>
+            <tbody id="documentsTableBody"></tbody>
+          </table>
+          <div id="documentsEmpty"></div>
+        </div>
+      </section>
+
+      <!-- PROJECTS -->
+      <section id="projectsView" class="view hidden">
+        <div class="section-heading">
+          <h2>Projects</h2>
+          <button class="btn btn-primary btn-sm" id="createProjectBtn">+ New Project</button>
+        </div>
+        <div class="project-grid" id="projectsGrid"></div>
       </section>
 
       <!-- AUTOMATIONS -->
@@ -201,7 +338,7 @@
               <div class="automation-icon">🔁</div>
               <span class="status-badge" style="background:var(--success-bg);color:var(--success);"><span class="dot" style="background:var(--success);"></span>Active</span>
             </div>
-            <h4>Follow-Up Automation</h4>
+            <h4>Lead Follow-Up</h4>
             <p>Automatically follows up with leads who haven't responded, via your booking workflow's reminder steps.</p>
             <div class="automation-footer">Managed in n8n · Zapier · Make</div>
           </div>
@@ -210,9 +347,27 @@
               <div class="automation-icon">⏰</div>
               <span class="status-badge" style="background:var(--success-bg);color:var(--success);"><span class="dot" style="background:var(--success);"></span>Active</span>
             </div>
-            <h4>Appointment Reminder</h4>
+            <h4>Appointment Reminders</h4>
             <p>Sends a reminder before every booked meeting so nothing gets missed.</p>
             <div class="automation-footer">Managed in n8n · Zapier · Make</div>
+          </div>
+          <div class="automation-card">
+            <div class="automation-card-top">
+              <div class="automation-icon">📥</div>
+              <span class="status-badge" style="background:var(--success-bg);color:var(--success);"><span class="dot" style="background:var(--success);"></span>Active</span>
+            </div>
+            <h4>New Booking Capture</h4>
+            <p>Every new booking lands here automatically via the webhook below.</p>
+            <div class="automation-footer">Managed in n8n · Zapier · Make</div>
+          </div>
+          <div class="automation-card">
+            <div class="automation-card-top">
+              <div class="automation-icon">💰</div>
+              <span class="status-badge" style="background:var(--warning-bg);color:#946A0C;"><span class="dot" style="background:var(--warning);"></span>Needs attention</span>
+            </div>
+            <h4>Invoice Reminders</h4>
+            <p>Not yet wired up — build this workflow in n8n, Zapier, or Make to remind clients about overdue invoices.</p>
+            <div class="automation-footer">This CRM only displays automation status — automations themselves run in your workflow platform.</div>
           </div>
           <div class="automation-card">
             <div class="automation-card-top">
@@ -233,6 +388,20 @@
 
       <!-- ANALYTICS -->
       <section id="analyticsView" class="view hidden">
+        <div class="two-col" style="margin-bottom:20px;">
+          <div class="panel">
+            <h3 style="margin:0 0 4px;">Lead Activity</h3>
+            <p class="muted-sub">New leads · Last 14 days</p>
+            <div class="perf-big-number" id="anLeadActivityNumber">0</div>
+            <div class="line-chart-wrap" id="anLeadActivityChart"></div>
+          </div>
+          <div class="panel">
+            <h3 style="margin:0 0 4px;">Pipeline</h3>
+            <p class="muted-sub">Total pipeline value</p>
+            <div class="perf-big-number accent" id="anPipelineValue">$0</div>
+            <div class="bar-chart" id="anPipelineStages" style="margin-top:12px;"></div>
+          </div>
+        </div>
         <div class="analytics-grid">
           <div class="panel">
             <h3>Pipeline by stage</h3>
@@ -245,20 +414,12 @@
             <div class="bar-chart" id="serviceChart"></div>
           </div>
         </div>
-        <div class="section-heading"><h2>Conversion snapshot</h2></div>
-        <div class="stats" style="padding-left:0;padding-right:0;grid-template-columns:repeat(3,1fr);">
-          <div class="stat-card">
-            <span class="stat-label">Total Leads</span>
-            <span class="stat-value" id="anTotal">0</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Won Clients</span>
-            <span class="stat-value" id="anWon">0</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Win Rate</span>
-            <span class="stat-value" id="anRate">0%</span>
-          </div>
+        <div class="section-heading"><h2>Business snapshot</h2></div>
+        <div class="stats" style="padding-left:0;padding-right:0;">
+          <div class="stat-card"><span class="stat-label">Total Leads</span><span class="stat-value" id="anTotal">0</span></div>
+          <div class="stat-card"><span class="stat-label">Won Clients</span><span class="stat-value" id="anWon">0</span></div>
+          <div class="stat-card"><span class="stat-label">Win Rate</span><span class="stat-value" id="anRate">0%</span></div>
+          <div class="stat-card"><span class="stat-label">Outstanding Billing</span><span class="stat-value" id="anOutstanding">$0</span></div>
         </div>
       </section>
 
@@ -274,7 +435,7 @@
     </main>
   </div>
 
-  <!-- Contact modal -->
+  <!-- Contact modal: opens to a read-only Client Profile hub; "Edit Details" reveals the original form -->
   <div class="modal-overlay hidden" id="modalOverlay">
     <div class="modal">
       <div class="modal-header">
@@ -282,14 +443,18 @@
         <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body" id="modalBody">
+        <div id="profileView" class="profile-view hidden"></div>
         <form id="contactForm">
           <input type="hidden" id="contactId" />
           <div class="form-row">
             <label>Name<input required id="fName" type="text" /></label>
-            <label>Email<input id="fEmail" type="email" /></label>
+            <label>Company<input id="fCompany" type="text" /></label>
           </div>
           <div class="form-row">
+            <label>Email<input id="fEmail" type="email" /></label>
             <label>Phone<input id="fPhone" type="text" /></label>
+          </div>
+          <div class="form-row">
             <label>Service
               <select id="fService">
                 <option value="">—</option>
@@ -299,15 +464,24 @@
                 <option>Lead Follow-Up</option>
               </select>
             </label>
+            <label>Value ($)<input id="fValue" type="number" min="0" /></label>
           </div>
           <div class="form-row">
             <label>Booking Date<input id="fDate" type="text" placeholder="2026-09-10" /></label>
             <label>Booking Time<input id="fTime" type="text" placeholder="10:00 AM" /></label>
           </div>
           <div class="form-row">
-            <label>Meeting Link<input id="fLink" type="text" /></label>
-            <label>Value ($)<input id="fValue" type="number" min="0" /></label>
+            <label>Next Follow-Up<input id="fNextFollowUp" type="date" /></label>
+            <label>Client Health
+              <select id="fHealth">
+                <option value="">Auto</option>
+                <option value="healthy">🟢 Healthy</option>
+                <option value="attention">🟡 Needs Attention</option>
+                <option value="risk">🔴 At Risk</option>
+              </select>
+            </label>
           </div>
+          <label class="full">Meeting Link<input id="fLink" type="text" /></label>
           <label class="full">Notes<textarea id="fNotes" rows="3"></textarea></label>
           <label class="full">Stage
             <select id="fStage">
@@ -326,15 +500,6 @@
             <button type="submit" class="btn btn-primary">Save</button>
           </div>
         </form>
-        <div class="contact-side-panel hidden" id="contactSidePanel">
-          <div>
-            <div class="quick-actions" id="quickActions"></div>
-          </div>
-          <div>
-            <h3 style="margin:0 0 10px;font-size:13.5px;">Activity Timeline</h3>
-            <div class="timeline" id="contactTimeline"></div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -352,9 +517,11 @@
       <div class="kai-suggestions">
         <button class="kai-suggestion">Who needs follow-up?</button>
         <button class="kai-suggestion">Show today's appointments</button>
-        <button class="kai-suggestion">Which leads are inactive?</button>
+        <button class="kai-suggestion">Which clients have overdue invoices?</button>
+        <button class="kai-suggestion">Which documents need attention?</button>
         <button class="kai-suggestion">What's my pipeline value?</button>
-        <button class="kai-suggestion">Show my overdue tasks</button>
+        <button class="kai-suggestion">Which clients need attention?</button>
+        <button class="kai-suggestion">Show my tasks for today.</button>
       </div>
     </div>
     <div class="kai-panel-footer">
@@ -362,6 +529,8 @@
       <button class="btn btn-primary btn-sm" id="kaiSend">Send</button>
     </div>
   </div>
+
+  <div class="toast-stack" id="toastStack"></div>
 
   <script src="app.js"></script>
 </body>
