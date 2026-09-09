@@ -134,68 +134,81 @@
         </div>
 
         <div class="stats" style="padding-left:0;padding-right:0;">
-          <div class="stat-card">
+          <button class="stat-card stat-card-link" id="kpiCardAppointments" data-view="appointments">
             <div class="stat-top"><span class="stat-label">Appointments</span>
               <span class="stat-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
             </div>
             <span class="stat-value" id="kpiAppointments">0</span>
             <span class="stat-delta" id="kpiAppointmentsDelta">—</span>
-          </div>
-          <div class="stat-card">
+          </button>
+          <button class="stat-card stat-card-link" id="kpiCardLeads" data-view="contacts">
             <div class="stat-top"><span class="stat-label">Leads</span>
               <span class="stat-icon"><svg viewBox="0 0 24 24"><path d="M20.8 21a8 8 0 0 0-17.6 0"/><circle cx="12" cy="8" r="4"/></svg></span>
             </div>
             <span class="stat-value" id="kpiLeads">0</span>
             <span class="stat-delta" id="kpiLeadsDelta">—</span>
-          </div>
-          <div class="stat-card">
+          </button>
+          <button class="stat-card stat-card-link" id="kpiCardFollowups" data-view="followups">
             <div class="stat-top"><span class="stat-label">Follow-Ups</span>
               <span class="stat-icon"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><path d="M21 3v6h-6"/></svg></span>
             </div>
             <span class="stat-value" id="kpiFollowups">0</span>
             <span class="stat-delta muted" id="kpiFollowupsDelta">—</span>
-          </div>
-          <div class="stat-card stat-card-highlight">
+          </button>
+          <button class="stat-card stat-card-highlight stat-card-link" id="kpiCardValue" data-view="billing">
             <div class="stat-top"><span class="stat-label">Pipeline Value</span>
               <span class="stat-icon"><svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
             </div>
             <span class="stat-value" id="kpiValue">$0</span>
             <span class="stat-delta" id="kpiValueDelta">—</span>
+          </button>
+        </div>
+
+        <div class="section-heading" style="margin-top:28px;">
+          <h2>Performance Snapshot</h2>
+        </div>
+        <p class="muted-sub" style="margin:-8px 0 12px;">A quick look at how your pipeline is performing.</p>
+        <div class="perf-snapshot-row" id="perfSnapshotRow"></div>
+
+        <div class="section-heading" style="margin-top:32px;">
+          <h2>Today's Focus</h2><button class="see-all" id="focusViewAll">View all →</button>
+        </div>
+        <div class="focus-feed" id="focusGrid"></div>
+
+        <div class="two-col" style="margin-top:28px;">
+          <div class="panel">
+            <div class="exec-block-header"><h3 style="margin:0;font-size:14.5px;">Lead Activity</h3>
+              <div class="chart-toggle" id="dashTrendToggle">
+                <button class="an-toggle-btn" data-days="7">7D</button>
+                <button class="an-toggle-btn" data-days="30">30D</button>
+                <button class="an-toggle-btn" data-days="90">90D</button>
+              </div>
+            </div>
+            <p class="muted-sub">New leads over the selected period.</p>
+            <div class="line-chart-wrap" id="lineChartWrap"></div>
+            <a href="#" class="see-all" id="viewAnalyticsLink" style="display:inline-block;margin-top:10px;">View detailed analytics →</a>
+          </div>
+          <div class="panel">
+            <h3 style="margin:0 0 4px;font-size:14.5px;">Pipeline</h3>
+            <p class="muted-sub">Where your leads sit right now.</p>
+            <div id="pipelineSnapshot"></div>
+            <a href="#" class="see-all" id="viewPipelineLink" style="display:inline-block;margin-top:10px;">View Pipeline →</a>
           </div>
         </div>
 
-        <div class="section-heading"><h2>Today's Focus</h2><button class="see-all" id="focusViewAll">View all →</button></div>
-        <div class="focus-feed" id="focusGrid"></div>
-
-        <div class="two-col" style="margin-top:22px;">
+        <div class="two-col" style="margin-top:28px;">
           <div class="panel">
             <h3 style="margin:0 0 4px;font-size:14.5px;">Client Health</h3>
             <p class="muted-sub">Computed from overdue follow-ups, tasks, and invoices.</p>
             <div id="clientHealthWidget"></div>
+            <p class="muted-sub" id="clientHealthInsight" style="margin:12px 0 0;"></p>
           </div>
           <div class="panel">
-            <h3 style="margin:0 0 4px;font-size:14.5px;">Recent Activity</h3>
+            <div class="exec-block-header"><h3 style="margin:0;font-size:14.5px;">Recent Activity</h3>
+              <button class="see-all" id="recentActivityViewAll">View all →</button>
+            </div>
             <p class="muted-sub">What's happened lately, across your pipeline.</p>
             <div class="mini-list" id="recentList"></div>
-          </div>
-        </div>
-
-        <div class="section-heading" style="margin-top:26px;">
-          <h2>Performance</h2>
-          <div class="chart-toggle" id="chartToggle">
-            <button class="chart-toggle-btn active" data-metric="leads">Leads</button>
-            <button class="chart-toggle-btn" data-metric="value">Pipeline Value</button>
-          </div>
-        </div>
-        <div class="two-col">
-          <div class="panel">
-            <p class="muted-sub" id="chartSubtitle">New leads per day, last 14 days.</p>
-            <div class="line-chart-wrap" id="lineChartWrap"></div>
-          </div>
-          <div class="panel">
-            <h3 style="margin:0 0 4px;font-size:14.5px;">Pipeline Funnel</h3>
-            <p class="muted-sub">Where leads are right now, stage by stage.</p>
-            <div id="funnelWrap"></div>
           </div>
         </div>
       </section>

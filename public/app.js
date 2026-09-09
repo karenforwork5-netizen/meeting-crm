@@ -25,7 +25,7 @@ let currentView = 'dashboard';
 let contactsFilter = null; // extra predicate set when jumping in from Dashboard focus cards
 let contactChip = 'all';
 let taskChip = 'all';
-let dashboardMetric = 'leads';
+let dashTrendDays = 30;
 let calendarMonth = (() => { const d = new Date(); d.setDate(1); return d; })();
 let pendingUploadContactId = '';
 
@@ -183,11 +183,9 @@ function renderDashboard() {
   renderStatusLine(overdueContacts.length + todayAppts.length + tasksToday.length + billingDue.length, overdueContacts.length);
   renderFocusFeed({ overdueContacts, todayAppts, tasksToday, billingDue, newLeads: contacts.filter(isNewLead), reactivation: contacts.filter(isReactivation) });
   renderClientHealthWidget();
-
-  const series = buildDailySeries(14, dashboardMetric);
-  renderLineChart($('#lineChartWrap'), series, dashboardMetric);
-  $('#chartSubtitle').textContent = dashboardMetric === 'value' ? 'Cumulative pipeline value, last 14 days.' : 'New leads per day, last 14 days.';
-  renderFunnel($('#funnelWrap'));
+  renderPerfSnapshotRow();
+  renderLeadTrend($('#lineChartWrap'), dashTrendDays);
+  renderPipelineSnapshot();
 
   const recent = [...contacts].sort((a, b) => new Date(b.lastActivity || b.createdAt) - new Date(a.lastActivity || a.createdAt)).slice(0, 6);
   const recentList = $('#recentList');
@@ -312,6 +310,63 @@ function renderClientHealthWidget() {
     row.addEventListener('click', () => {
       const key = row.dataset.key;
       contactsFilter = { label: HEALTH_META[key].label, predicate: (c) => computeHealth(c) === key };
+      goToView('contacts');
+    });
+  });
+  const insight = $('#clientHealthInsight');
+  if (insight) {
+    const needsAttention = counts.attention + counts.risk;
+    insight.textContent = contacts.length === 0 ? '' : needsAttention > 0 ? `${needsAttention} contact${needsAttention === 1 ? '' : 's'} may need attention.` : 'All contacts are healthy.';
+  }
+}
+
+/* ---- Performance Snapshot (dashboard summary, fixed 30-day window) ---- */
+function renderPerfSnapshotRow() {
+  const now = new Date(); now.setHours(23, 59, 59, 999);
+  const start = new Date(now); start.setDate(start.getDate() - 29); start.setHours(0, 0, 0, 0);
+  const bounds = { start, end: now };
+  const prevBounds = { start: new Date(start.getTime() - 30 * DAY), end: new Date(start.getTime() - 1) };
+
+  const leadsNow = contacts.filter(c => inRange(c.createdAt, bounds)).length;
+  const leadsPrev = contacts.filter(c => inRange(c.createdAt, prevBounds)).length;
+  const meetingsNow = contacts.filter(c => inRange(c.createdAt, bounds) && FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('held')).length;
+  const meetingsPrev = contacts.filter(c => inRange(c.createdAt, prevBounds) && FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('held')).length;
+  const clientsNow = contacts.filter(c => c.stage === 'client' && inRange(c.lastActivity, bounds)).length;
+  const clientsPrev = contacts.filter(c => c.stage === 'client' && inRange(c.lastActivity, prevBounds)).length;
+  const rateNow = leadsNow ? (clientsNow / leadsNow) * 100 : 0;
+  const ratePrev = leadsPrev ? (clientsPrev / leadsPrev) * 100 : 0;
+
+  const items = [
+    { label: 'New Leads', value: leadsNow, delta: pctChangeLabel(leadsNow, leadsPrev) },
+    { label: 'Meetings', value: meetingsNow, delta: pctChangeLabel(meetingsNow, meetingsPrev) },
+    { label: 'Clients', value: clientsNow, delta: pctChangeLabel(clientsNow, clientsPrev) },
+    { label: 'Conversion Rate', value: rateNow.toFixed(1) + '%', delta: ratePrev > 0 ? pctChangeLabel(rateNow, ratePrev) : { text: 'This period', positive: null } },
+  ];
+  $('#perfSnapshotRow').innerHTML = items.map(it => `
+    <div class="perf-snapshot-item">
+      <div class="perf-snapshot-label">${it.label}</div>
+      <div class="perf-snapshot-value">${it.value}</div>
+      <div class="perf-snapshot-delta ${it.delta.positive === false ? 'negative' : it.delta.positive === true ? 'positive' : 'neutral'}">${it.delta.text}</div>
+    </div>
+  `).join('');
+}
+
+/* ---- Pipeline Snapshot (dashboard summary, lighter than the Analytics funnel) ---- */
+function renderPipelineSnapshot() {
+  const el = $('#pipelineSnapshot');
+  if (!contacts.length) { el.innerHTML = emptyStateHtml('No pipeline data yet', 'Your pipeline will appear here as leads progress.'); return; }
+  const counts = STAGES.filter(s => s.key !== 'lost').map(s => ({ stage: s, count: contacts.filter(c => c.stage === s.key).length }));
+  const max = Math.max(1, ...counts.map(c => c.count));
+  el.innerHTML = counts.map(({ stage, count }) => `
+    <div class="pipeline-snap-row" data-stage="${stage.key}">
+      <span class="pipeline-snap-label"><span class="dot" style="background:${stage.color}"></span>${stage.label}</span>
+      <div class="pipeline-snap-track"><div class="pipeline-snap-fill" style="width:${Math.max(count ? 8 : 0, Math.round((count / max) * 100))}%;background:${stage.color}"></div></div>
+      <span class="pipeline-snap-count">${count}</span>
+    </div>
+  `).join('');
+  el.querySelectorAll('.pipeline-snap-row').forEach(row => {
+    row.addEventListener('click', () => {
+      contactsFilter = { label: STAGES.find(s => s.key === row.dataset.stage).label, predicate: (c) => c.stage === row.dataset.stage };
       goToView('contacts');
     });
   });
@@ -1646,20 +1701,29 @@ function initKai() {
   });
   $('#kaiInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#kaiSend').click(); });
 }
-function initChartToggle() {
-  document.querySelectorAll('.chart-toggle-btn').forEach(btn => {
+function initDashTrendToggle() {
+  document.querySelectorAll('#dashTrendToggle .an-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.dataset.days) === dashTrendDays);
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.chart-toggle-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      dashboardMetric = btn.dataset.metric;
-      renderDashboard();
+      dashTrendDays = Number(btn.dataset.days);
+      document.querySelectorAll('#dashTrendToggle .an-toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+      renderLeadTrend($('#lineChartWrap'), dashTrendDays);
     });
   });
+}
+function initDashboardKpiLinks() {
+  document.querySelectorAll('.stat-card-link[data-view]').forEach(card => {
+    card.addEventListener('click', () => { contactsFilter = null; goToView(card.dataset.view); });
+  });
+  $('#recentActivityViewAll').addEventListener('click', () => goToView('contacts'));
+  $('#viewAnalyticsLink').addEventListener('click', (e) => { e.preventDefault(); goToView('analytics'); });
+  $('#viewPipelineLink').addEventListener('click', (e) => { e.preventDefault(); goToView('pipeline'); });
 }
 
 initModal();
 initNav();
-initChartToggle();
+initDashTrendToggle();
+initDashboardKpiLinks();
 initSearch();
 initWebhookUrl();
 initGreeting();

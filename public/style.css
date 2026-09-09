@@ -203,6 +203,28 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 .stat-card-highlight .stat-icon { background: var(--primary); color: #fff; }
 .stat-card-highlight .stat-value { color: var(--plum); }
+.stat-card-link {
+  font-family: inherit; text-align: left; cursor: pointer; width: 100%;
+}
+.stat-card-link:hover { border-color: #DAD3F2; }
+
+/* Performance snapshot (dashboard summary strip) */
+.perf-snapshot-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+.perf-snapshot-item { padding: 2px 0; }
+.perf-snapshot-label { font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; }
+.perf-snapshot-value { font-size: 24px; font-weight: 800; letter-spacing: -0.01em; color: var(--text); }
+.perf-snapshot-delta { font-size: 12px; font-weight: 600; margin-top: 4px; }
+.perf-snapshot-delta.positive { color: var(--success); }
+.perf-snapshot-delta.negative { color: var(--error); }
+.perf-snapshot-delta.neutral { color: var(--text-muted); }
+
+/* Pipeline snapshot (dashboard summary, lighter than the funnel) */
+.pipeline-snap-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; cursor: pointer; border-radius: 8px; }
+.pipeline-snap-row:hover { background: var(--bg); }
+.pipeline-snap-label { width: 100px; font-size: 12px; color: var(--text); font-weight: 600; flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+.pipeline-snap-track { flex: 1; height: 9px; background: var(--lavender); border-radius: 6px; overflow: hidden; }
+.pipeline-snap-fill { height: 100%; border-radius: 6px; }
+.pipeline-snap-count { width: 22px; text-align: right; font-size: 13px; font-weight: 700; }
 .stat-top { display: flex; align-items: center; justify-content: space-between; }
 .stat-label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
 .stat-icon {
@@ -767,6 +789,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); }
   .exec-two-col { grid-template-columns: 1fr; }
   .exec-kpi-row { grid-template-columns: repeat(2, 1fr); }
   .exec-activity-grid { grid-template-columns: repeat(2, 1fr); }
+  .perf-snapshot-row { grid-template-columns: repeat(2, 1fr); gap: 16px; }
 }
 @media (max-width: 640px) {
   .exec-value-grid { grid-template-columns: 1fr; }
