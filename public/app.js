@@ -1,7 +1,7 @@
 const STAGES = [
   { key: 'new', label: 'New Lead', color: '#6C5CE7' },
   { key: 'confirmed', label: 'Contacted', color: '#8C7FEA' },
-  { key: 'held', label: 'Meeting Held', color: '#40356B' },
+  { key: 'held', label: 'Meeting Held', color: '#2196F3' },
   { key: 'proposal', label: 'Proposal Sent', color: '#F4B942' },
   { key: 'client', label: 'Client', color: '#43B883' },
   { key: 'lost', label: 'Lost', color: '#E05A6D' },
@@ -174,6 +174,7 @@ function renderDashboard() {
   $('#kpiFollowupsDelta').textContent = overdue.length ? `${overdue.length} overdue` : 'All caught up';
   animateValue($('#kpiValue'), pipelineValue, true);
   $('#kpiValueDelta').textContent = wonValue ? `${fmtMoney(wonValue)} won` : 'No won deals yet';
+  renderKpiSparklines();
 
   const tasksToday = tasks.filter(t => t.status === 'open' && t.dueDate === todayStr());
   const billingDue = invoices.filter(i => invoiceEffectiveStatus(i) !== 'Paid' && i.dueDate && daysUntil(i.dueDate) <= 3 && daysUntil(i.dueDate) >= 0);
@@ -181,11 +182,13 @@ function renderDashboard() {
   const todayAppts = contacts.filter(isTodayAppointment);
 
   renderStatusLine(overdueContacts.length + todayAppts.length + tasksToday.length + billingDue.length, overdueContacts.length);
-  renderFocusFeed({ overdueContacts, todayAppts, tasksToday, billingDue, newLeads: contacts.filter(isNewLead), reactivation: contacts.filter(isReactivation) });
+  renderFocusFeed({ overdueContacts, todayAppts, tasksToday, billingDue });
   renderClientHealthWidget();
-  renderPerfSnapshotRow();
-  renderLeadTrend($('#lineChartWrap'), dashTrendDays);
-  renderPipelineSnapshot();
+  renderTopSources();
+  renderDashboardLeadActivity(dashTrendDays);
+  renderPipelineOverview();
+  renderUpcomingAppointments();
+  renderHeaderDate();
 
   const recent = [...contacts].sort((a, b) => new Date(b.lastActivity || b.createdAt) - new Date(a.lastActivity || a.createdAt)).slice(0, 6);
   const recentList = $('#recentList');
@@ -213,10 +216,10 @@ function renderStatusLine(attentionCount, urgentCount) {
   el.classList.remove('attention', 'clear');
   if (attentionCount === 0) {
     el.classList.add('clear');
-    el.innerHTML = `<span class="status-dot"></span> Your schedule is clear today.`;
+    el.innerHTML = `<span class="status-dot"></span> You're all caught up today.`;
   } else {
     el.classList.add(urgentCount > 0 ? 'attention' : '');
-    el.innerHTML = `<span class="status-dot"></span> You have ${attentionCount} item${attentionCount === 1 ? '' : 's'} that need${attentionCount === 1 ? 's' : ''} your attention today.`;
+    el.innerHTML = `<span class="status-dot"></span> Let's make today productive. You have ${attentionCount} item${attentionCount === 1 ? '' : 's'} that need${attentionCount === 1 ? 's' : ''} your attention today.`;
   }
 }
 
@@ -247,7 +250,9 @@ function showToast(message) {
 }
 
 /* ================= Today's Focus (actionable feed) ================= */
-function renderFocusFeed({ overdueContacts, todayAppts, tasksToday, billingDue, newLeads, reactivation }) {
+function renderFocusFeed({ overdueContacts, todayAppts, tasksToday, billingDue }) {
+  // Today's Focus is for items that require action — a new lead or a reactivation
+  // candidate is passive information and belongs in Recent Activity instead.
   const items = [];
   overdueContacts.forEach(c => {
     const days = Math.floor((Date.now() - new Date(c.lastActivity || c.createdAt).getTime()) / DAY);
@@ -265,16 +270,15 @@ function renderFocusFeed({ overdueContacts, todayAppts, tasksToday, billingDue, 
     const when = daysUntil(i.dueDate) === 0 ? 'today' : daysUntil(i.dueDate) === 1 ? 'tomorrow' : `in ${daysUntil(i.dueDate)} days`;
     items.push({ priority: 'info', icon: '💰', name: contact ? contact.name : 'Unassigned', context: 'Invoice due', meta: `${fmtMoney(i.amount)} · Due ${when}`, action: 'Review', onClick: () => (contact ? openModal(contact) : goToView('billing')) });
   });
-  newLeads.forEach(c => items.push({ priority: 'info', icon: '🟢', name: c.name, context: 'New lead', meta: 'last 3 days', action: 'View', onClick: () => openModal(c) }));
-  reactivation.forEach(c => items.push({ priority: 'info', icon: '✨', name: c.name, context: 'Ready for reactivation', meta: 'gone quiet', action: 'View', onClick: () => openModal(c) }));
 
   const order = { urgent: 0, attention: 1, info: 2 };
   items.sort((a, b) => order[a.priority] - order[b.priority]);
-  const shown = items.slice(0, 8);
+  const shown = items.slice(0, 4);
+  const remaining = items.length - shown.length;
 
   const feed = $('#focusGrid');
   if (!shown.length) {
-    feed.innerHTML = `<div class="focus-empty"><div class="fe-icon">✨</div><div class="fe-title">You're all caught up.</div><p style="margin:0;font-size:12px;">Nothing needs your attention right now.</p></div>`;
+    feed.innerHTML = `<div class="focus-empty"><span class="fe-icon">✓</span><span class="fe-title">You're all caught up today.</span></div>`;
     return;
   }
   feed.innerHTML = shown.map((it, i) => `
@@ -286,7 +290,9 @@ function renderFocusFeed({ overdueContacts, todayAppts, tasksToday, billingDue, 
       </div>
       <button class="btn btn-secondary btn-sm">${it.action}</button>
     </div>
-  `).join('');
+  `).join('') + (remaining > 0 ? `<div class="focus-more-row" id="focusMoreRow">+ ${remaining} more</div>` : '');
+  const moreRow = $('#focusMoreRow');
+  if (moreRow) moreRow.addEventListener('click', () => goToView('followups'));
   feed.querySelectorAll('.focus-row').forEach((row, i) => {
     row.addEventListener('click', () => shown[i].onClick());
   });
@@ -296,79 +302,367 @@ function initFocusViewAll() {
 }
 
 /* ================= Client Health widget ================= */
+const HEALTH_COLORS = { healthy: '#43B883', attention: '#F4B942', risk: '#E05A6D' };
 function renderClientHealthWidget() {
   const counts = { healthy: 0, attention: 0, risk: 0 };
   contacts.forEach(c => counts[computeHealth(c)]++);
+  const total = contacts.length;
+  const donutEl = $('#clientHealthDonut');
+  if (!total) {
+    donutEl.innerHTML = '';
+  } else {
+    const donut = buildDonut(Object.keys(HEALTH_META).map(key => ({ label: HEALTH_META[key].label, count: counts[key], color: HEALTH_COLORS[key], key })));
+    donutEl.innerHTML = `${donut}<div class="donut-center"><div class="dc-value">${total}</div><div class="dc-label">Contacts</div></div>`;
+  }
   const el = $('#clientHealthWidget');
-  el.innerHTML = Object.keys(HEALTH_META).map(key => `
-    <div class="health-row" data-key="${key}">
-      <span>${HEALTH_META[key].icon} ${HEALTH_META[key].label}</span>
-      <span class="hr-count">${counts[key]}</span>
-    </div>
-  `).join('');
-  el.querySelectorAll('.health-row').forEach(row => {
-    row.addEventListener('click', () => {
-      const key = row.dataset.key;
-      contactsFilter = { label: HEALTH_META[key].label, predicate: (c) => computeHealth(c) === key };
-      goToView('contacts');
+  if (!total) { el.innerHTML = emptyStateHtml('No contacts yet', 'Client health will appear here once you have contacts.'); }
+  else {
+    el.innerHTML = Object.keys(HEALTH_META).map(key => {
+      const pct = Math.round((counts[key] / total) * 100);
+      return `
+        <div class="donut-row" data-key="${key}">
+          <span class="dot" style="background:${HEALTH_COLORS[key]}"></span>
+          <span class="dr-label">${HEALTH_META[key].icon} ${HEALTH_META[key].label}</span>
+          <div class="dr-track"><div class="dr-fill" style="width:${pct}%;background:${HEALTH_COLORS[key]}"></div></div>
+          <span class="dr-count">${counts[key]}</span>
+          <span class="dr-pct">${pct}%</span>
+        </div>
+      `;
+    }).join('');
+    el.querySelectorAll('.donut-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const key = row.dataset.key;
+        contactsFilter = { label: HEALTH_META[key].label, predicate: (c) => computeHealth(c) === key };
+        goToView('contacts');
+      });
     });
-  });
+    syncDonutHover(donutEl, el);
+  }
   const insight = $('#clientHealthInsight');
   if (insight) {
     const needsAttention = counts.attention + counts.risk;
-    insight.textContent = contacts.length === 0 ? '' : needsAttention > 0 ? `${needsAttention} contact${needsAttention === 1 ? '' : 's'} may need attention.` : 'All contacts are healthy.';
+    insight.textContent = total === 0 ? '' : needsAttention > 0 ? `${needsAttention} client${needsAttention === 1 ? '' : 's'} may need attention.` : 'All contacts are healthy.';
   }
 }
 
 /* ---- Performance Snapshot (dashboard summary, fixed 30-day window) ---- */
-function renderPerfSnapshotRow() {
+/* ---- Key Metrics Overview table ---- */
+let dashKmoRangeDays = 30;
+function dashKmoBounds() {
   const now = new Date(); now.setHours(23, 59, 59, 999);
-  const start = new Date(now); start.setDate(start.getDate() - 29); start.setHours(0, 0, 0, 0);
-  const bounds = { start, end: now };
-  const prevBounds = { start: new Date(start.getTime() - 30 * DAY), end: new Date(start.getTime() - 1) };
-
-  const leadsNow = contacts.filter(c => inRange(c.createdAt, bounds)).length;
-  const leadsPrev = contacts.filter(c => inRange(c.createdAt, prevBounds)).length;
-  const meetingsNow = contacts.filter(c => inRange(c.createdAt, bounds) && FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('held')).length;
-  const meetingsPrev = contacts.filter(c => inRange(c.createdAt, prevBounds) && FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('held')).length;
-  const clientsNow = contacts.filter(c => c.stage === 'client' && inRange(c.lastActivity, bounds)).length;
-  const clientsPrev = contacts.filter(c => c.stage === 'client' && inRange(c.lastActivity, prevBounds)).length;
-  const rateNow = leadsNow ? (clientsNow / leadsNow) * 100 : 0;
-  const ratePrev = leadsPrev ? (clientsPrev / leadsPrev) * 100 : 0;
-
-  const items = [
-    { label: 'New Leads', value: leadsNow, delta: pctChangeLabel(leadsNow, leadsPrev) },
-    { label: 'Meetings', value: meetingsNow, delta: pctChangeLabel(meetingsNow, meetingsPrev) },
-    { label: 'Clients', value: clientsNow, delta: pctChangeLabel(clientsNow, clientsPrev) },
-    { label: 'Conversion Rate', value: rateNow.toFixed(1) + '%', delta: ratePrev > 0 ? pctChangeLabel(rateNow, ratePrev) : { text: 'This period', positive: null } },
-  ];
-  $('#perfSnapshotRow').innerHTML = items.map(it => `
-    <div class="perf-snapshot-item">
-      <div class="perf-snapshot-label">${it.label}</div>
-      <div class="perf-snapshot-value">${it.value}</div>
-      <div class="perf-snapshot-delta ${it.delta.positive === false ? 'negative' : it.delta.positive === true ? 'positive' : 'neutral'}">${it.delta.text}</div>
-    </div>
-  `).join('');
+  let start;
+  if (dashKmoRangeDays === 'year') {
+    start = new Date(now.getFullYear(), 0, 1);
+  } else {
+    start = new Date(now); start.setDate(start.getDate() - (Number(dashKmoRangeDays) - 1)); start.setHours(0, 0, 0, 0);
+  }
+  return { start, end: now };
+}
+function dashKmoPrevBounds(bounds) {
+  const len = bounds.end.getTime() - bounds.start.getTime();
+  return { start: new Date(bounds.start.getTime() - len), end: new Date(bounds.start.getTime() - 1) };
+}
+function buildSparkline(values, color) {
+  if (!values.length || values.every(v => v === 0)) return null;
+  const w = 72, h = 26, pad = 2;
+  const max = Math.max(1, ...values);
+  const stepX = (w - pad * 2) / Math.max(1, values.length - 1);
+  const pts = values.map((v, i) => `${(pad + i * stepX).toFixed(1)},${(h - pad - (v / max) * (h - pad * 2)).toFixed(1)}`);
+  return `<svg class="kmo-sparkline" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+function dailyCountSeries(days, dateField) {
+  const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (days - 1));
+  const out = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    out.push(contacts.filter(c => (c[dateField] || '').slice(0, 10) === key).length);
+  }
+  return out;
+}
+/* ---- KPI card sparklines (real daily series, last 14 days) ---- */
+function renderKpiSparklines() {
+  const days = 14;
+  const put = (id, values) => {
+    const el = $(id);
+    if (!el) return;
+    const spark = contacts.length ? buildSparkline(values, '#6C5CE7') : null;
+    el.innerHTML = spark || '<span class="no-spark">No trend data</span>';
+  };
+  put('#kpiLeadsSpark', dailyCountSeries(days, 'createdAt'));
+  put('#kpiAppointmentsSpark', dailyCountSeries(days, 'bookingDate'));
+  $('#kpiFollowupsSpark').innerHTML = '<span class="no-spark">No trend data</span>';
+  const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (days - 1));
+  const valueSeries = [];
+  for (let i = 0; i < days; i++) { const d = new Date(start); d.setDate(start.getDate() + i); const key = d.toISOString().slice(0, 10);
+    valueSeries.push(contacts.filter(c => (c.createdAt || '').slice(0, 10) <= key).reduce((s, c) => s + (Number(c.value) || 0), 0)); }
+  put('#kpiValueSpark', valueSeries);
 }
 
-/* ---- Pipeline Snapshot (dashboard summary, lighter than the Analytics funnel) ---- */
-function renderPipelineSnapshot() {
-  const el = $('#pipelineSnapshot');
-  if (!contacts.length) { el.innerHTML = emptyStateHtml('No pipeline data yet', 'Your pipeline will appear here as leads progress.'); return; }
-  const counts = STAGES.filter(s => s.key !== 'lost').map(s => ({ stage: s, count: contacts.filter(c => c.stage === s.key).length }));
-  const max = Math.max(1, ...counts.map(c => c.count));
-  el.innerHTML = counts.map(({ stage, count }) => `
-    <div class="pipeline-snap-row" data-stage="${stage.key}">
-      <span class="pipeline-snap-label"><span class="dot" style="background:${stage.color}"></span>${stage.label}</span>
-      <div class="pipeline-snap-track"><div class="pipeline-snap-fill" style="width:${Math.max(count ? 8 : 0, Math.round((count / max) * 100))}%;background:${stage.color}"></div></div>
-      <span class="pipeline-snap-count">${count}</span>
-    </div>
-  `).join('');
-  el.querySelectorAll('.pipeline-snap-row').forEach(row => {
+function renderHeaderDate() {
+  const el = $('#headerDatePill');
+  if (el) el.textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/* ---- Top Lead Sources (dashboard — always visible, with a real period filter) ---- */
+let topSourcesRangeFilter = '30';
+function topSourcesBounds() {
+  const now = new Date(); now.setHours(23, 59, 59, 999);
+  if (topSourcesRangeFilter === 'all') return null;
+  let start;
+  if (topSourcesRangeFilter === 'month') { start = new Date(now.getFullYear(), now.getMonth(), 1); }
+  else { start = new Date(now); start.setDate(start.getDate() - (Number(topSourcesRangeFilter) - 1)); start.setHours(0, 0, 0, 0); }
+  return { start, end: now };
+}
+function renderTopSources() {
+  const bounds = topSourcesBounds();
+  const inScope = bounds ? contacts.filter(c => inRange(c.createdAt, bounds)) : contacts;
+  const withSource = inScope.filter(c => c.leadSource);
+  const listEl = $('#topSourcesList');
+  if (!withSource.length) {
+    listEl.innerHTML = emptyStateHtml('No data yet', 'No lead sources have been recorded for this period.');
+    return;
+  }
+  const counts = {};
+  withSource.forEach(c => { counts[c.leadSource] = (counts[c.leadSource] || 0) + 1; });
+  const total = withSource.length;
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const max = Math.max(1, ...sorted.map(([, c]) => c));
+  listEl.innerHTML = sorted.map(([name, count]) => {
+    const pct = Math.round((count / total) * 100);
+    const barPct = Math.round((count / max) * 100);
+    const emphasize = name === 'LinkedIn' || name === 'OnlineJobs.ph';
+    return `
+      <div class="aging-row ${emphasize ? 'emphasize' : ''}" data-source="${escapeHtml(name)}">
+        <span class="aging-label">${escapeHtml(name)}</span>
+        <div class="aging-track"><div class="aging-fill" style="width:${Math.max(6, barPct)}%;background:${emphasize ? '#6C5CE7' : '#8C7FEA'}"></div></div>
+        <span class="aging-count">${count}</span>
+        <span class="aging-pct">${pct}%</span>
+      </div>
+    `;
+  }).join('');
+  listEl.querySelectorAll('.aging-row').forEach(row => {
     row.addEventListener('click', () => {
-      contactsFilter = { label: STAGES.find(s => s.key === row.dataset.stage).label, predicate: (c) => c.stage === row.dataset.stage };
+      contactSourceFilter = row.dataset.source;
+      const sel = $('#contactSourceFilter'); if (sel) sel.value = row.dataset.source;
       goToView('contacts');
     });
+  });
+}
+function initTopSourcesRange() {
+  $('#topSourcesRange').addEventListener('change', (e) => {
+    topSourcesRangeFilter = e.target.value;
+    renderTopSources();
+  });
+}
+
+/* ---- Donut chart builder (shared by Pipeline Overview and Client Health) ---- */
+function buildDonut(segments, size, thickness) {
+  size = size || 120; thickness = thickness || 14;
+  const r = (size - thickness) / 2;
+  const c = 2 * Math.PI * r;
+  const total = segments.reduce((s, seg) => s + seg.count, 0);
+  if (!total) return null;
+  let offset = 0;
+  const circles = segments.filter(seg => seg.count > 0).map(seg => {
+    const frac = seg.count / total;
+    const dash = frac * c;
+    const circle = `<circle class="donut-segment" data-key="${escapeHtml(seg.key || seg.label)}" style="color:${seg.color}" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="${thickness}" stroke-dasharray="${dash.toFixed(2)} ${(c - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" stroke-linecap="butt"><title>${escapeHtml(seg.label)}: ${seg.count}</title></circle>`;
+    offset += dash;
+    return circle;
+  }).join('');
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--lavender)" stroke-width="${thickness}"/>
+    ${circles}
+  </svg>`;
+}
+
+/* Hover-sync a donut's segments with its breakdown row list (dims unrelated, brightens hovered). */
+function syncDonutHover(donutWrapEl, breakdownEl) {
+  const segments = donutWrapEl.querySelectorAll('.donut-segment');
+  const rows = breakdownEl.querySelectorAll('.donut-row');
+  function setActive(key) {
+    donutWrapEl.classList.toggle('has-selection', !!key);
+    segments.forEach(seg => seg.classList.toggle('dash-selected', seg.dataset.key === key));
+    rows.forEach(row => row.classList.toggle('dash-dimmed', !!key && row.dataset.key !== key));
+  }
+  segments.forEach(seg => {
+    seg.addEventListener('mouseenter', () => setActive(seg.dataset.key));
+    seg.addEventListener('mouseleave', () => setActive(null));
+  });
+  rows.forEach(row => {
+    row.addEventListener('mouseenter', () => setActive(row.dataset.key));
+    row.addEventListener('mouseleave', () => setActive(null));
+  });
+}
+
+/* ---- Pipeline Overview (donut + breakdown, dashboard) ---- */
+function renderPipelineOverview() {
+  const donutEl = $('#pipelineDonut');
+  const breakdownEl = $('#pipelineBreakdown');
+  const stages = STAGES.filter(s => s.key !== 'lost').map(s => ({ label: s.label, key: s.key, color: s.color, count: contacts.filter(c => c.stage === s.key).length }));
+  const total = stages.reduce((s, x) => s + x.count, 0);
+  if (!total) {
+    donutEl.innerHTML = '';
+    breakdownEl.innerHTML = emptyStateHtml('No pipeline data yet', 'Your pipeline will appear here as leads progress.');
+    return;
+  }
+  const donut = buildDonut(stages.map(s => ({ label: s.label, count: s.count, color: s.color, key: s.key })));
+  donutEl.innerHTML = `${donut}<div class="donut-center"><div class="dc-value">${total}</div><div class="dc-label">Total Leads</div></div>`;
+  breakdownEl.innerHTML = stages.map(s => {
+    const pct = Math.round((s.count / total) * 100);
+    return `
+      <div class="donut-row" data-key="${s.key}">
+        <span class="dot" style="background:${s.color}"></span>
+        <span class="dr-label">${s.label}</span>
+        <div class="dr-track"><div class="dr-fill" style="width:${pct}%;background:${s.color}"></div></div>
+        <span class="dr-count">${s.count}</span>
+        <span class="dr-pct">${pct}%</span>
+      </div>
+    `;
+  }).join('');
+  breakdownEl.querySelectorAll('.donut-row').forEach(row => {
+    row.addEventListener('click', () => {
+      contactsFilter = { label: STAGES.find(s => s.key === row.dataset.key).label, predicate: (c) => c.stage === row.dataset.key };
+      goToView('contacts');
+    });
+  });
+  syncDonutHover(donutEl, breakdownEl);
+}
+
+/* ---- Multi-series Lead Activity chart (dashboard) — only series with real data are shown ---- */
+function renderDashboardLeadActivity(days) {
+  const container = $('#lineChartWrap');
+  const legendEl = $('#leadActivityLegend');
+  if (!contacts.length) {
+    legendEl.innerHTML = '';
+    container.innerHTML = emptyStateHtml('Not enough data yet', 'Lead activity will appear here once you have contacts.');
+    return;
+  }
+  const series = [];
+  series.push({ label: 'New Leads', color: '#6C5CE7', values: dailyCountSeries(days, 'createdAt') });
+  if (contacts.some(c => c.bookingDate)) series.push({ label: 'Meetings', color: '#F4B942', values: dailyCountSeries(days, 'bookingDate') });
+  if (tasks.length) {
+    const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (days - 1));
+    const values = [];
+    for (let i = 0; i < days; i++) { const d = new Date(start); d.setDate(start.getDate() + i); const key = d.toISOString().slice(0, 10);
+      values.push(tasks.filter(t => (t.createdAt || '').slice(0, 10) === key).length); }
+    series.push({ label: 'Follow-Ups', color: '#3B82F6', values });
+  }
+  if (contacts.some(c => c.stage === 'client')) {
+    const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (days - 1));
+    const values = [];
+    for (let i = 0; i < days; i++) { const d = new Date(start); d.setDate(start.getDate() + i); const key = d.toISOString().slice(0, 10);
+      values.push(contacts.filter(c => c.stage === 'client' && (c.lastActivity || '').slice(0, 10) === key).length); }
+    series.push({ label: 'Clients', color: '#43B883', values });
+  }
+  legendEl.innerHTML = series.map(s => `<div class="chart-legend-item"><span class="dot" style="background:${s.color}"></span>${s.label}</div>`).join('');
+  renderMultiLineChart(container, series, days);
+}
+function renderMultiLineChart(container, series, days) {
+  const w = Math.max(560, days * 30), h = 220, padTop = 24, padBottom = 30, padX = 24;
+  const max = Math.max(1, ...series.flatMap(s => s.values));
+  const stepX = (w - padX * 2) / Math.max(1, days - 1);
+  const dateLabels = []; { const start = new Date(); start.setDate(start.getDate() - (days - 1));
+    for (let i = 0; i < days; i++) { const d = new Date(start); d.setDate(start.getDate() + i); dateLabels.push(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })); } }
+  const showEvery = days > 10 ? Math.ceil(days / 10) : 1;
+
+  const allCoords = series.map(s => s.values.map((v, i) => ({ x: padX + i * stepX, y: padTop + (1 - v / max) * (h - padTop - padBottom), v })));
+  const lines = series.map((s, si) => {
+    const coords = allCoords[si];
+    const pathD = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+    const points = coords.map((c, i) => `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="2.5" fill="${s.color}"><title>${dateLabels[i]} · ${s.label}: ${c.v}</title></circle>`).join('');
+    return `<path d="${pathD}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>${points}`;
+  }).join('');
+  const axisLabels = dateLabels.map((lbl, i) => i % showEvery === 0 ? `<text class="line-chart-label" x="${(padX + i * stepX).toFixed(1)}" y="${h - 8}" text-anchor="middle">${lbl}</text>` : '').join('');
+  const guideLine = `<line class="chart-guide-line" x1="${padX}" y1="${padTop}" x2="${padX}" y2="${h - padBottom}"></line>`;
+  const hoverDots = series.map(s => `<circle class="chart-hover-dot" r="5" fill="${s.color}" cx="${padX}" cy="${padTop}"></circle>`).join('');
+
+  container.style.position = 'relative';
+  container.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMinYMid meet">
+    <rect class="chart-overlay-rect" x="0" y="0" width="${w}" height="${h}"></rect>
+    ${lines}${axisLabels}${guideLine}${hoverDots}
+  </svg>`;
+
+  const svgEl = container.querySelector('.chart-svg');
+  const overlay = container.querySelector('.chart-overlay-rect');
+  const guideLineEl = container.querySelector('.chart-guide-line');
+  const hoverDotEls = container.querySelectorAll('.chart-hover-dot');
+  const tooltip = document.createElement('div');
+  tooltip.className = 'chart-tooltip';
+  container.appendChild(tooltip);
+
+  let pinnedIndex = null;
+  function showAt(index) {
+    const x = padX + index * stepX;
+    guideLineEl.setAttribute('x1', x); guideLineEl.setAttribute('x2', x); guideLineEl.classList.add('visible');
+    hoverDotEls.forEach((dot, si) => {
+      const c = allCoords[si][index];
+      dot.setAttribute('cx', c.x); dot.setAttribute('cy', c.y); dot.classList.add('visible');
+    });
+    tooltip.innerHTML = `<div class="ct-date">${dateLabels[index]}</div>` +
+      series.map((s, si) => `<div class="ct-row"><span class="ct-dot" style="background:${s.color}"></span>${s.label}: <strong>${allCoords[si][index].v}</strong></div>`).join('');
+    const rect = svgEl.getBoundingClientRect();
+    if (rect.width) {
+      const scaleX = rect.width / w;
+      const px = x * scaleX;
+      tooltip.style.left = Math.min(rect.width - 150, Math.max(0, px + 10)) + 'px';
+      tooltip.style.top = '4px';
+    }
+    tooltip.classList.add('visible');
+  }
+  function hideAll() {
+    guideLineEl.classList.remove('visible');
+    hoverDotEls.forEach(d => d.classList.remove('visible'));
+    tooltip.classList.remove('visible');
+  }
+  function indexFromEvent(e) {
+    const rect = svgEl.getBoundingClientRect();
+    if (!rect.width) return 0;
+    const relX = (e.clientX - rect.left) / rect.width * w;
+    return Math.max(0, Math.min(days - 1, Math.round((relX - padX) / stepX)));
+  }
+  overlay.addEventListener('mousemove', (e) => showAt(indexFromEvent(e)));
+  overlay.addEventListener('mouseleave', () => { if (pinnedIndex !== null) showAt(pinnedIndex); else hideAll(); });
+  overlay.addEventListener('click', (e) => {
+    const idx = indexFromEvent(e);
+    pinnedIndex = (pinnedIndex === idx) ? null : idx;
+    if (pinnedIndex !== null) showAt(pinnedIndex); else hideAll();
+  });
+}
+
+/* ---- Upcoming Appointments (dashboard, full-width table) ---- */
+function apptStatusFor(c) {
+  if (c.stage === 'lost') return 'Cancelled';
+  return 'Confirmed';
+}
+function renderUpcomingAppointments() {
+  const el = $('#upcomingApptsTableWrap');
+  const upcoming = contacts.filter(c => c.bookingDate && daysUntil(c.bookingDate) >= 0).sort((a, b) => a.bookingDate.localeCompare(b.bookingDate)).slice(0, 8);
+  if (!upcoming.length) { el.innerHTML = emptyStateHtml('No appointments scheduled', 'Upcoming bookings from your automation will appear here.'); return; }
+  el.innerHTML = `
+    <table class="kmo-table">
+      <thead><tr><th>Date</th><th>Time</th><th>Contact</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${upcoming.map(c => {
+          const status = apptStatusFor(c);
+          const statusColor = status === 'Cancelled' ? 'var(--error)' : 'var(--success)';
+          return `
+            <tr class="exec-clickable-row" data-id="${c.id}">
+              <td>${fmtDateShort(c.bookingDate)}, ${new Date(c.bookingDate + 'T00:00:00').getFullYear()}</td>
+              <td>${escapeHtml(c.bookingTime || '—')}</td>
+              <td><div class="kmo-metric-cell"><div class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initials(c.name)}</div>${escapeHtml(c.name)}</div></td>
+              <td>${escapeHtml(c.opportunity || c.service || 'General')}</td>
+              <td><span class="status-badge" style="background:${statusColor}1a;color:${statusColor}">${status}</span></td>
+              <td>${c.meetingLink ? `<a href="${escapeHtml(c.meetingLink)}" target="_blank" rel="noopener" class="row-link" onclick="event.stopPropagation()">Join</a>` : '<span class="kmo-dash">—</span>'}</td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+  el.querySelectorAll('.exec-clickable-row').forEach(row => {
+    row.addEventListener('click', () => { const c = contacts.find(x => x.id === row.dataset.id); if (c) openModal(c); });
   });
 }
 
@@ -528,10 +822,11 @@ function renderFunnel(container) {
 }
 
 /* ================= PIPELINE ================= */
+let pipelineSourceFilter = 'all';
 function renderBoard() {
   const board = $('#board');
   board.innerHTML = '';
-  const list = filteredContacts();
+  const list = filteredContacts().filter(c => pipelineSourceFilter === 'all' || c.leadSource === pipelineSourceFilter);
   STAGES.forEach(stage => {
     const items = list.filter(c => c.stage === stage.key);
     const total = items.reduce((s, c) => s + (Number(c.value) || 0), 0);
@@ -572,7 +867,7 @@ function renderCard(c) {
   card.innerHTML = `
     <div class="card-top">
       <div class="avatar">${initials(c.name)}</div>
-      <div><div class="card-name">${escapeHtml(c.name)}</div><div class="card-service">${escapeHtml(c.service || 'General inquiry')}</div></div>
+      <div><div class="card-name">${escapeHtml(c.name)}</div><div class="card-service">${escapeHtml(c.opportunity || c.service || 'General inquiry')}</div>${c.leadSource ? `<div class="card-source">${escapeHtml(c.leadSource)}</div>` : ''}</div>
     </div>
     <div class="card-meta">
       ${c.email ? `<span>✉ ${escapeHtml(c.email)}</span>` : ''}
@@ -591,6 +886,7 @@ function renderCard(c) {
 }
 
 /* ================= CONTACTS ================= */
+let contactSourceFilter = 'all';
 function contactChipPredicate(c) {
   if (contactChip === 'leads') return isActive(c);
   if (contactChip === 'clients') return c.stage === 'client';
@@ -598,9 +894,16 @@ function contactChipPredicate(c) {
   if (contactChip === 'inactive') return c.stage === 'lost';
   return true;
 }
+function contactSourcePredicate(c) {
+  if (contactSourceFilter === 'all') return true;
+  return c.leadSource === contactSourceFilter;
+}
+function sourceBadgeHtml(c) {
+  return c.leadSource ? `<span class="source-badge">${escapeHtml(c.leadSource)}</span>` : '<span class="kmo-dash">—</span>';
+}
 function renderTable() {
   const body = $('#contactsTableBody');
-  const list = filteredContacts().filter(contactChipPredicate);
+  const list = filteredContacts().filter(contactChipPredicate).filter(contactSourcePredicate);
   body.innerHTML = '';
   $('#contactsEmpty').innerHTML = list.length ? '' : emptyStateHtml('No contacts found', 'Try clearing your search or filters.');
   list.forEach(c => {
@@ -609,6 +912,7 @@ function renderTable() {
     tr.innerHTML = `
       <td><div class="name-cell"><div class="avatar">${initials(c.name)}</div>${escapeHtml(c.name)}</div></td>
       <td>${escapeHtml(c.company || '—')}</td>
+      <td>${sourceBadgeHtml(c)}</td>
       <td>${escapeHtml(c.email || '—')}</td>
       <td>${escapeHtml(c.phone || '—')}</td>
       <td><span class="status-badge" style="background:${stage.color}1a;color:${stage.color}"><span class="dot" style="background:${stage.color}"></span>${stage.label}</span></td>
@@ -628,6 +932,10 @@ function initContactFilters() {
       contactChip = chip.dataset.filter;
       renderTable();
     });
+  });
+  $('#contactSourceFilter').addEventListener('change', (e) => {
+    contactSourceFilter = e.target.value;
+    renderTable();
   });
 }
 
@@ -873,7 +1181,7 @@ function renderBilling() {
   [...invoices].sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || '')).forEach(inv => {
     const contact = contacts.find(c => c.id === inv.contactId);
     const status = invoiceEffectiveStatus(inv);
-    const statusColor = { Draft: '#858197', Pending: '#F4B942', Paid: '#43B883', Overdue: '#E05A6D' }[status];
+    const statusColor = { Draft: '#A8A6C2', Pending: '#F4B942', Paid: '#43D39E', Overdue: '#F05A72' }[status];
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${escapeHtml(contact ? contact.name : 'Unassigned')}</td>
@@ -1238,10 +1546,10 @@ function renderAttentionTable(container) {
 
 /* ---- Lead source performance ---- */
 function renderSourceTable(container) {
-  const withSource = contacts.filter(c => c.source);
+  const withSource = contacts.filter(c => c.leadSource);
   if (!withSource.length) {
     container.innerHTML = `
-      ${emptyStateHtml('Lead source tracking isn\'t available yet', 'Add a Lead Source when creating or editing a contact, and this section will populate automatically.')}
+      ${emptyStateHtml('No data yet', 'Add a Lead Source when creating or editing a contact, and this section will populate automatically.')}
       <button class="btn btn-secondary btn-sm" id="anAddSourceBtn" style="margin:0 auto;display:block;">Add lead source to a contact</button>
     `;
     const btn = $('#anAddSourceBtn');
@@ -1250,11 +1558,11 @@ function renderSourceTable(container) {
   }
   const sources = {};
   withSource.forEach(c => {
-    sources[c.source] = sources[c.source] || { leads: 0, meetings: 0, clients: 0, value: 0 };
-    sources[c.source].leads++;
-    if (FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('held')) sources[c.source].meetings++;
-    if (c.stage === 'client') sources[c.source].clients++;
-    if (isActive(c)) sources[c.source].value += Number(c.value) || 0;
+    sources[c.leadSource] = sources[c.leadSource] || { leads: 0, meetings: 0, clients: 0, value: 0 };
+    sources[c.leadSource].leads++;
+    if (FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('held')) sources[c.leadSource].meetings++;
+    if (c.stage === 'client') sources[c.leadSource].clients++;
+    if (isActive(c)) sources[c.leadSource].value += Number(c.value) || 0;
   });
   container.innerHTML = `
     <table class="exec-table">
@@ -1456,7 +1764,7 @@ function renderClientProfile(c) {
       <div class="avatar lg">${initials(c.name)}</div>
       <div>
         <div class="profile-name">${escapeHtml(c.name)}</div>
-        <div class="profile-sub">${escapeHtml(c.company || c.service || 'Contact')} · <span class="status-badge" style="background:${stage.color}1a;color:${stage.color}">${stage.label}</span></div>
+        <div class="profile-sub">${escapeHtml(c.company || c.service || 'Contact')} · <span class="status-badge" style="background:${stage.color}1a;color:${stage.color}">${stage.label}</span>${c.leadSource ? ` · ${sourceBadgeHtml(c)}` : ''}</div>
       </div>
       <div class="profile-value">${c.value ? fmtMoney(c.value) : '—'}<div style="font-size:11px;color:var(--text-muted);font-weight:600;">Pipeline Value</div></div>
     </div>
@@ -1478,7 +1786,13 @@ function renderClientProfile(c) {
         <div class="profile-overview-item"><div class="oi-label">Status</div><div class="oi-value">${stage.label}</div></div>
         <div class="profile-overview-item"><div class="oi-label">Next Follow-Up</div><div class="oi-value">${c.nextFollowUp ? fmtDateShort(c.nextFollowUp) : '—'}</div></div>
         <div class="profile-overview-item"><div class="oi-label">Client Health</div><div class="oi-value">${healthBadgeHtml(c)}</div></div>
+        <div class="profile-overview-item"><div class="oi-label">Billing Type</div><div class="oi-value">${c.billingType && c.billingType !== 'Not Set' ? escapeHtml(c.billingType) : '—'}</div></div>
+        <div class="profile-overview-item"><div class="oi-label">Rate</div><div class="oi-value">${c.billingType === 'Hourly' && c.hourlyRate ? `$${Number(c.hourlyRate)}/hr` : '—'}</div></div>
+        ${c.leadSource ? `<div class="profile-overview-item"><div class="oi-label">Opportunity / Job</div><div class="oi-value">${escapeHtml(c.opportunity || '—')}</div></div>
+        <div class="profile-overview-item"><div class="oi-label">Source Status</div><div class="oi-value">${escapeHtml(c.sourceStatus || 'New')}</div></div>
+        <div class="profile-overview-item"><div class="oi-label">Date Received</div><div class="oi-value">${c.dateReceived ? fmtDateShort(c.dateReceived) : '—'}</div></div>` : ''}
       </div>
+      ${c.sourceUrl ? `<p class="profile-empty" style="margin-top:10px;"><a href="${escapeHtml(c.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(c.sourceUrl)}</a></p>` : ''}
     </div>
 
     <div class="profile-section">
@@ -1546,11 +1860,17 @@ function populateForm(contact) {
   $('#contactId').value = contact ? contact.id : '';
   $('#fName').value = contact ? contact.name : '';
   $('#fCompany').value = contact ? (contact.company || '') : '';
-  $('#fSource').value = contact ? (contact.source || '') : '';
+  $('#fLeadSource').value = contact ? (contact.leadSource || '') : '';
+  $('#fSourceUrl').value = contact ? (contact.sourceUrl || '') : '';
+  $('#fOpportunity').value = contact ? (contact.opportunity || '') : '';
+  $('#fDateReceived').value = contact ? (contact.dateReceived || '') : '';
+  $('#fSourceStatus').value = contact ? (contact.sourceStatus || 'New') : 'New';
   $('#fEmail').value = contact ? contact.email : '';
   $('#fPhone').value = contact ? contact.phone : '';
   $('#fService').value = contact ? (contact.service || '') : '';
   $('#fValue').value = contact ? contact.value : '';
+  $('#fHourlyRate').value = contact && contact.hourlyRate != null ? contact.hourlyRate : '';
+  $('#fBillingType').value = contact ? (contact.billingType || 'Not Set') : 'Not Set';
   $('#fDate').value = contact ? contact.bookingDate : '';
   $('#fTime').value = contact ? contact.bookingTime : '';
   $('#fNextFollowUp').value = contact ? (contact.nextFollowUp || '') : '';
@@ -1592,7 +1912,11 @@ function initModal() {
     const payload = {
       name: $('#fName').value,
       company: $('#fCompany').value,
-      source: $('#fSource').value,
+      leadSource: $('#fLeadSource').value,
+      sourceUrl: $('#fSourceUrl').value,
+      opportunity: $('#fOpportunity').value,
+      dateReceived: $('#fDateReceived').value,
+      sourceStatus: $('#fSourceStatus').value,
       email: $('#fEmail').value,
       phone: $('#fPhone').value,
       service: $('#fService').value,
@@ -1600,6 +1924,8 @@ function initModal() {
       bookingTime: $('#fTime').value,
       meetingLink: $('#fLink').value,
       value: $('#fValue').value,
+      hourlyRate: $('#fHourlyRate').value,
+      billingType: $('#fBillingType').value,
       notes: $('#fNotes').value,
       stage: $('#fStage').value,
       nextFollowUp: $('#fNextFollowUp').value,
@@ -1648,6 +1974,12 @@ function goToView(view) {
   document.getElementById(VIEW_SECTION_IDS[view]).classList.remove('hidden');
   closeSidebar();
   render();
+}
+function initPipelineSourceFilter() {
+  $('#pipelineSourceFilter').addEventListener('change', (e) => {
+    pipelineSourceFilter = e.target.value;
+    renderBoard();
+  });
 }
 function initNav() {
   document.querySelectorAll('.nav-item').forEach(btn => {
@@ -1707,7 +2039,7 @@ function initDashTrendToggle() {
     btn.addEventListener('click', () => {
       dashTrendDays = Number(btn.dataset.days);
       document.querySelectorAll('#dashTrendToggle .an-toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
-      renderLeadTrend($('#lineChartWrap'), dashTrendDays);
+      renderDashboardLeadActivity(dashTrendDays);
     });
   });
 }
@@ -1718,11 +2050,13 @@ function initDashboardKpiLinks() {
   $('#recentActivityViewAll').addEventListener('click', () => goToView('contacts'));
   $('#viewAnalyticsLink').addEventListener('click', (e) => { e.preventDefault(); goToView('analytics'); });
   $('#viewPipelineLink').addEventListener('click', (e) => { e.preventDefault(); goToView('pipeline'); });
+  $('#upcomingApptsViewAll').addEventListener('click', () => goToView('appointments'));
 }
 
 initModal();
 initNav();
 initDashTrendToggle();
+initTopSourcesRange();
 initDashboardKpiLinks();
 initSearch();
 initWebhookUrl();
@@ -1730,6 +2064,7 @@ initGreeting();
 initMobileNav();
 initKai();
 initContactFilters();
+initPipelineSourceFilter();
 initCalendarNav();
 initTaskForm();
 initBilling();

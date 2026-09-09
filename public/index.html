@@ -112,12 +112,23 @@
             <span class="dot-badge" id="notifDot" style="display:none"></span>
           </button>
           <div class="user-avatar" title="Karen Gregorio">KG</div>
+          <span class="date-pill" id="headerDatePill">—</span>
           <button class="btn btn-primary" id="addContactBtn">+ Add Contact</button>
         </div>
       </header>
 
       <!-- DASHBOARD -->
-      <section id="dashboardView" class="view">
+      <section id="dashboardView" class="view dashboard-dark">
+        <div class="dash-bg-fx" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div>
+          <div class="fx-orb fx-orb-2"></div>
+          <div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div>
+          <div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube fx-cube-1"></div>
+          <div class="fx-particles"></div>
+        </div>
+        <div class="dashboard-content">
         <div class="dash-greeting" style="padding:0;">
           <h1 id="greetingText" style="margin:0 0 4px;">Good morning, Karen 👋</h1>
           <p class="dash-status-line" id="dashStatusLine">Here's what's happening with your pipeline today.</p>
@@ -134,19 +145,21 @@
         </div>
 
         <div class="stats" style="padding-left:0;padding-right:0;">
+          <button class="stat-card stat-card-link" id="kpiCardLeads" data-view="contacts">
+            <div class="stat-top"><span class="stat-label">Total Leads</span>
+              <span class="stat-icon"><svg viewBox="0 0 24 24"><path d="M20.8 21a8 8 0 0 0-17.6 0"/><circle cx="12" cy="8" r="4"/></svg></span>
+            </div>
+            <span class="stat-value" id="kpiLeads">0</span>
+            <span class="stat-delta" id="kpiLeadsDelta">—</span>
+            <div class="stat-spark" id="kpiLeadsSpark"></div>
+          </button>
           <button class="stat-card stat-card-link" id="kpiCardAppointments" data-view="appointments">
             <div class="stat-top"><span class="stat-label">Appointments</span>
               <span class="stat-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
             </div>
             <span class="stat-value" id="kpiAppointments">0</span>
             <span class="stat-delta" id="kpiAppointmentsDelta">—</span>
-          </button>
-          <button class="stat-card stat-card-link" id="kpiCardLeads" data-view="contacts">
-            <div class="stat-top"><span class="stat-label">Leads</span>
-              <span class="stat-icon"><svg viewBox="0 0 24 24"><path d="M20.8 21a8 8 0 0 0-17.6 0"/><circle cx="12" cy="8" r="4"/></svg></span>
-            </div>
-            <span class="stat-value" id="kpiLeads">0</span>
-            <span class="stat-delta" id="kpiLeadsDelta">—</span>
+            <div class="stat-spark" id="kpiAppointmentsSpark"></div>
           </button>
           <button class="stat-card stat-card-link" id="kpiCardFollowups" data-view="followups">
             <div class="stat-top"><span class="stat-label">Follow-Ups</span>
@@ -154,6 +167,7 @@
             </div>
             <span class="stat-value" id="kpiFollowups">0</span>
             <span class="stat-delta muted" id="kpiFollowupsDelta">—</span>
+            <div class="stat-spark" id="kpiFollowupsSpark"></div>
           </button>
           <button class="stat-card stat-card-highlight stat-card-link" id="kpiCardValue" data-view="billing">
             <div class="stat-top"><span class="stat-label">Pipeline Value</span>
@@ -161,19 +175,9 @@
             </div>
             <span class="stat-value" id="kpiValue">$0</span>
             <span class="stat-delta" id="kpiValueDelta">—</span>
+            <div class="stat-spark" id="kpiValueSpark"></div>
           </button>
         </div>
-
-        <div class="section-heading" style="margin-top:28px;">
-          <h2>Performance Snapshot</h2>
-        </div>
-        <p class="muted-sub" style="margin:-8px 0 12px;">A quick look at how your pipeline is performing.</p>
-        <div class="perf-snapshot-row" id="perfSnapshotRow"></div>
-
-        <div class="section-heading" style="margin-top:32px;">
-          <h2>Today's Focus</h2><button class="see-all" id="focusViewAll">View all →</button>
-        </div>
-        <div class="focus-feed" id="focusGrid"></div>
 
         <div class="two-col" style="margin-top:28px;">
           <div class="panel">
@@ -184,25 +188,39 @@
                 <button class="an-toggle-btn" data-days="90">90D</button>
               </div>
             </div>
-            <p class="muted-sub">New leads over the selected period.</p>
+            <p class="muted-sub">New leads, follow-ups and meetings over time.</p>
+            <div class="chart-legend" id="leadActivityLegend"></div>
             <div class="line-chart-wrap" id="lineChartWrap"></div>
             <a href="#" class="see-all" id="viewAnalyticsLink" style="display:inline-block;margin-top:10px;">View detailed analytics →</a>
           </div>
           <div class="panel">
-            <h3 style="margin:0 0 4px;font-size:14.5px;">Pipeline</h3>
+            <div class="exec-block-header"><h3 style="margin:0;font-size:14.5px;">Pipeline Overview</h3></div>
             <p class="muted-sub">Where your leads sit right now.</p>
-            <div id="pipelineSnapshot"></div>
+            <div class="donut-layout">
+              <div class="donut-chart-wrap" id="pipelineDonut"></div>
+              <div class="donut-breakdown" id="pipelineBreakdown"></div>
+            </div>
             <a href="#" class="see-all" id="viewPipelineLink" style="display:inline-block;margin-top:10px;">View Pipeline →</a>
           </div>
         </div>
 
-        <div class="two-col" style="margin-top:28px;">
+        <div class="two-col" style="margin-top:28px;align-items:stretch;">
+          <div class="panel focus-panel">
+            <div class="exec-block-header"><h3 style="margin:0;font-size:14.5px;">Today's Focus</h3><button class="see-all" id="focusViewAll">View all →</button></div>
+            <div class="focus-feed focus-feed-compact" id="focusGrid"></div>
+          </div>
           <div class="panel">
             <h3 style="margin:0 0 4px;font-size:14.5px;">Client Health</h3>
-            <p class="muted-sub">Computed from overdue follow-ups, tasks, and invoices.</p>
-            <div id="clientHealthWidget"></div>
+            <p class="muted-sub">Based on overdue follow-ups, tasks, and invoices.</p>
+            <div class="donut-layout">
+              <div class="donut-chart-wrap" id="clientHealthDonut"></div>
+              <div class="donut-breakdown" id="clientHealthWidget"></div>
+            </div>
             <p class="muted-sub" id="clientHealthInsight" style="margin:12px 0 0;"></p>
           </div>
+        </div>
+
+        <div class="two-col" style="margin-top:28px;align-items:stretch;">
           <div class="panel">
             <div class="exec-block-header"><h3 style="margin:0;font-size:14.5px;">Recent Activity</h3>
               <button class="see-all" id="recentActivityViewAll">View all →</button>
@@ -210,28 +228,86 @@
             <p class="muted-sub">What's happened lately, across your pipeline.</p>
             <div class="mini-list" id="recentList"></div>
           </div>
+
+          <div class="panel" id="topSourcesPanel">
+            <div class="exec-block-header"><h3 style="margin:0;font-size:14.5px;">Top Lead Sources</h3>
+              <select id="topSourcesRange" class="exec-range-select">
+                <option value="month">This Month</option>
+                <option value="30" selected>Last 30 Days</option>
+                <option value="90">Last 90 Days</option>
+                <option value="all">All Time</option>
+              </select>
+            </div>
+            <p class="muted-sub">Where your leads are coming from.</p>
+            <div id="topSourcesList"></div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:28px;">
+          <div class="exec-block-header"><h3 style="margin:0;font-size:14.5px;">Upcoming Appointments</h3>
+            <button class="see-all" id="upcomingApptsViewAll">View all →</button>
+          </div>
+          <p class="muted-sub">Your next scheduled calls and meetings.</p>
+          <div class="kmo-table-wrap" id="upcomingApptsTableWrap"></div>
+        </div>
         </div>
       </section>
 
       <!-- PIPELINE -->
       <section id="pipelineView" class="view hidden">
+        <div class="view-bg-fx fx-medium-high" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
+        <div class="contacts-filter-bar" style="justify-content:flex-end;">
+          <select id="pipelineSourceFilter" class="exec-range-select">
+            <option value="all">All Sources</option>
+            <option>LinkedIn</option>
+            <option>OnlineJobs.ph</option>
+            <option>Upwork</option>
+            <option>Referral</option>
+            <option>Website</option>
+            <option>Facebook</option>
+            <option>Direct</option>
+            <option>Other</option>
+          </select>
+        </div>
         <div class="board" id="board"></div>
       </section>
 
       <!-- CONTACTS -->
       <section id="contactsView" class="view hidden">
-        <div class="filter-chips" id="contactFilters">
-          <button class="filter-chip active" data-filter="all">All</button>
-          <button class="filter-chip" data-filter="leads">Leads</button>
-          <button class="filter-chip" data-filter="clients">Clients</button>
-          <button class="filter-chip" data-filter="active">Active</button>
-          <button class="filter-chip" data-filter="inactive">Inactive</button>
+        <div class="view-bg-fx fx-medium" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
+        <div class="contacts-filter-bar">
+          <div class="filter-chips" id="contactFilters">
+            <button class="filter-chip active" data-filter="all">All</button>
+            <button class="filter-chip" data-filter="leads">Leads</button>
+            <button class="filter-chip" data-filter="clients">Clients</button>
+            <button class="filter-chip" data-filter="active">Active</button>
+            <button class="filter-chip" data-filter="inactive">Inactive</button>
+          </div>
+          <select id="contactSourceFilter" class="exec-range-select">
+            <option value="all">All Sources</option>
+            <option>LinkedIn</option>
+            <option>OnlineJobs.ph</option>
+            <option>Upwork</option>
+            <option>Referral</option>
+            <option>Website</option>
+            <option>Facebook</option>
+            <option>Direct</option>
+            <option>Other</option>
+          </select>
         </div>
         <div class="table-wrap">
           <table class="contacts-table">
             <thead>
               <tr>
-                <th>Name</th><th>Company</th><th>Email</th><th>Phone</th><th>Stage</th><th>Health</th><th>Value</th><th></th>
+                <th>Name</th><th>Company</th><th>Source</th><th>Email</th><th>Phone</th><th>Stage</th><th>Health</th><th>Value</th><th></th>
               </tr>
             </thead>
             <tbody id="contactsTableBody"></tbody>
@@ -242,11 +318,21 @@
 
       <!-- APPOINTMENTS -->
       <section id="appointmentsView" class="view hidden">
+        <div class="view-bg-fx fx-medium" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
         <div id="appointmentsContent"></div>
       </section>
 
       <!-- CALENDAR -->
       <section id="calendarView" class="view hidden">
+        <div class="view-bg-fx fx-medium" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
         <div class="two-col">
           <div class="panel">
             <div class="calendar-header">
@@ -266,6 +352,11 @@
 
       <!-- TASKS -->
       <section id="tasksView" class="view hidden">
+        <div class="view-bg-fx fx-medium" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
         <div class="filter-chips" id="taskFilters">
           <button class="filter-chip active" data-filter="all">All</button>
           <button class="filter-chip" data-filter="today">Today</button>
@@ -287,11 +378,21 @@
 
       <!-- FOLLOW-UPS -->
       <section id="followupsView" class="view hidden">
+        <div class="view-bg-fx fx-medium" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
         <div id="followupsContent"></div>
       </section>
 
       <!-- BILLING -->
       <section id="billingView" class="view hidden">
+        <div class="view-bg-fx fx-low-medium" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
         <div class="stats" style="padding-left:0;padding-right:0;">
           <div class="stat-card"><span class="stat-label">Total Outstanding</span><span class="stat-value" id="billOutstanding">$0</span></div>
           <div class="stat-card"><span class="stat-label">Paid This Month</span><span class="stat-value" id="billPaid">$0</span></div>
@@ -313,6 +414,11 @@
 
       <!-- DOCUMENTS -->
       <section id="documentsView" class="view hidden">
+        <div class="view-bg-fx fx-low-medium" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
         <div class="section-heading">
           <h2>Documents</h2>
           <button class="btn btn-primary btn-sm" id="uploadDocumentBtn">+ Upload Document</button>
@@ -329,6 +435,11 @@
 
       <!-- PROJECTS -->
       <section id="projectsView" class="view hidden">
+        <div class="view-bg-fx fx-medium" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
         <div class="section-heading">
           <h2>Projects</h2>
           <button class="btn btn-primary btn-sm" id="createProjectBtn">+ New Project</button>
@@ -338,6 +449,11 @@
 
       <!-- AUTOMATIONS -->
       <section id="automationsView" class="view hidden">
+        <div class="view-bg-fx fx-medium-high" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
         <div class="automation-connect-strip">
           <span>● Automations connected</span>
           <span class="platform-pill">n8n</span>
@@ -401,6 +517,11 @@
 
       <!-- ANALYTICS -->
       <section id="analyticsView" class="view hidden">
+        <div class="view-bg-fx fx-medium" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
         <div class="exec-header">
           <div class="exec-range">
             <select id="anDateRange">
@@ -523,6 +644,10 @@
 
       <!-- SETTINGS -->
       <section id="settingsView" class="view hidden">
+        <div class="view-bg-fx fx-low" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div>
+          <div class="fx-ring fx-ring-1"></div>
+        </div>
         <div class="settings-card">
           <h2>Webhook ingest</h2>
           <p>Point your n8n / Zapier / Make booking workflow at this endpoint to add every new booking to the CRM automatically.</p>
@@ -560,19 +685,53 @@
                 <option>Appointment Setting</option>
                 <option>CRM Management</option>
                 <option>Lead Follow-Up</option>
+                <option>AI &amp; Automation</option>
               </select>
             </label>
             <label>Value ($)<input id="fValue" type="number" min="0" /></label>
           </div>
           <div class="form-row">
+            <label>Hourly Rate ($/hr)<input id="fHourlyRate" type="number" min="0" step="0.01" placeholder="e.g. 8.50" /></label>
+            <label>Billing Type
+              <select id="fBillingType">
+                <option>Not Set</option>
+                <option>Hourly</option>
+                <option>Fixed Project</option>
+                <option>Retainer</option>
+                <option>Commission</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-row">
             <label>Lead Source
-              <select id="fSource">
+              <select id="fLeadSource">
                 <option value="">—</option>
+                <option>LinkedIn</option>
+                <option>OnlineJobs.ph</option>
+                <option>Upwork</option>
                 <option>Referral</option>
                 <option>Website</option>
-                <option>LinkedIn</option>
-                <option>Instagram</option>
+                <option>Facebook</option>
+                <option>Direct</option>
                 <option>Other</option>
+              </select>
+            </label>
+            <label>Source URL<input id="fSourceUrl" type="url" placeholder="https://..." /></label>
+          </div>
+          <div class="form-row">
+            <label>Opportunity / Job<input id="fOpportunity" type="text" placeholder="e.g. Lead Reactivation Automation" /></label>
+            <label>Date Received<input id="fDateReceived" type="date" /></label>
+          </div>
+          <div class="form-row">
+            <label>Source Status
+              <select id="fSourceStatus">
+                <option value="New">New</option>
+                <option value="Contacted">Contacted</option>
+                <option value="Responded">Responded</option>
+                <option value="Qualified">Qualified</option>
+                <option value="Meeting Scheduled">Meeting Scheduled</option>
+                <option value="Won">Won</option>
+                <option value="Lost">Lost</option>
               </select>
             </label>
             <span></span>

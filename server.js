@@ -17,6 +17,10 @@ const TASK_PRIORITIES = ['High', 'Medium', 'Low'];
 const INVOICE_STATUSES = ['Draft', 'Pending', 'Paid', 'Overdue'];
 const PROJECT_STATUSES = ['Planning', 'In Progress', 'On Hold', 'Completed', 'Cancelled'];
 const DOCUMENT_TYPES = ['Contract', 'Proposal', 'Invoice', 'Estimate', 'Agreement', 'Attachment', 'Other'];
+const LEAD_SOURCES = ['LinkedIn', 'OnlineJobs.ph', 'Upwork', 'Referral', 'Website', 'Facebook', 'Direct', 'Other'];
+const SOURCE_STATUSES = ['New', 'Contacted', 'Responded', 'Qualified', 'Meeting Scheduled', 'Won', 'Lost'];
+const SOURCE_TYPES = ['manual', 'api', 'import', 'integration'];
+const BILLING_TYPES = ['Not Set', 'Hourly', 'Fixed Project', 'Retainer', 'Commission'];
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -113,9 +117,16 @@ app.post('/api/contacts', (req, res) => {
     meetingLink: body.meetingLink || '',
     notes: body.notes || '',
     value: Number(body.value) || 0,
+    hourlyRate: body.hourlyRate !== undefined && body.hourlyRate !== '' ? Number(body.hourlyRate) : null,
+    billingType: BILLING_TYPES.includes(body.billingType) ? body.billingType : 'Not Set',
     stage: STAGES.includes(body.stage) ? body.stage : 'new',
     company: body.company || '',
-    source: body.source || '',
+    leadSource: LEAD_SOURCES.includes(body.leadSource) ? body.leadSource : '',
+    sourceUrl: body.sourceUrl || '',
+    opportunity: body.opportunity || '',
+    dateReceived: body.dateReceived || '',
+    sourceStatus: SOURCE_STATUSES.includes(body.sourceStatus) ? body.sourceStatus : 'New',
+    sourceType: SOURCE_TYPES.includes(body.sourceType) ? body.sourceType : 'manual',
     tags: Array.isArray(body.tags) ? body.tags : [],
     nextFollowUp: body.nextFollowUp || '',
     lastContactedAt: body.lastContactedAt || '',
