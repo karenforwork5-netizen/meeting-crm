@@ -115,6 +115,7 @@ app.post('/api/contacts', (req, res) => {
     value: Number(body.value) || 0,
     stage: STAGES.includes(body.stage) ? body.stage : 'new',
     company: body.company || '',
+    source: body.source || '',
     tags: Array.isArray(body.tags) ? body.tags : [],
     nextFollowUp: body.nextFollowUp || '',
     lastContactedAt: body.lastContactedAt || '',

@@ -952,46 +952,401 @@ function initProjects() {
   });
 }
 
-/* ================= ANALYTICS ================= */
+/* ================= ANALYTICS (Executive Minimal) ================= */
+let anDateRangeDays = 30; // number of days, or 'year'
+let anTrendDays = 30;
+let anTab = 'overview';
+let anCustomFrom = '', anCustomTo = '';
+
+function anRangeBounds() {
+  const now = new Date(); now.setHours(23, 59, 59, 999);
+  let start;
+  if (anDateRangeDays === 'year') {
+    start = new Date(now.getFullYear(), 0, 1);
+  } else if (anDateRangeDays === 'custom' && anCustomFrom && anCustomTo) {
+    return { start: new Date(anCustomFrom + 'T00:00:00'), end: new Date(anCustomTo + 'T23:59:59') };
+  } else {
+    start = new Date(now); start.setDate(start.getDate() - (Number(anDateRangeDays) - 1)); start.setHours(0, 0, 0, 0);
+  }
+  return { start, end: now };
+}
+function anRangeLengthMs(bounds) { return bounds.end.getTime() - bounds.start.getTime(); }
+function inRange(dateStr, bounds) {
+  if (!dateStr) return false;
+  const t = new Date(dateStr).getTime();
+  return t >= bounds.start.getTime() && t <= bounds.end.getTime();
+}
+function anContactsInRange(bounds) { return contacts.filter(c => inRange(c.createdAt, bounds)); }
+function anPrevBounds(bounds) {
+  const len = anRangeLengthMs(bounds);
+  return { start: new Date(bounds.start.getTime() - len), end: new Date(bounds.start.getTime() - 1) };
+}
+
+function pctChangeLabel(current, previous) {
+  if (previous > 0) {
+    const pct = Math.round(((current - previous) / previous) * 100);
+    const arrow = pct >= 0 ? '↑' : '↓';
+    return { text: `${arrow} ${Math.abs(pct)}% vs previous period`, positive: pct >= 0 };
+  }
+  if (current > 0) return { text: 'New this period', positive: true };
+  return { text: 'No data yet', positive: null };
+}
+
 function renderAnalytics() {
-  const total = contacts.length;
-  const won = contacts.filter(c => c.stage === 'client').length;
-  $('#anTotal').textContent = total;
-  $('#anWon').textContent = won;
-  $('#anRate').textContent = total ? Math.round((won / total) * 100) + '%' : '0%';
-  $('#anOutstanding').textContent = fmtMoney(invoices.filter(i => invoiceEffectiveStatus(i) !== 'Paid').reduce((s, i) => s + Number(i.amount || 0), 0));
+  const bounds = anRangeBounds();
+  const prevBounds = anPrevBounds(bounds);
+  renderExecKpiRow(bounds, prevBounds);
+  if (anTab === 'overview') renderOverviewTab(bounds);
+  if (anTab === 'leads') renderLeadsTab(bounds);
+  if (anTab === 'pipeline') renderPipelineTab();
+  if (anTab === 'revenue') renderRevenueTab(bounds);
+  if (anTab === 'activity') renderActivityTab(bounds);
+}
 
-  const leadSeries = buildDailySeries(14, 'leads');
-  const newLeadsCount = leadSeries.reduce((s, p) => s + p.value, 0);
-  $('#anLeadActivityNumber').textContent = newLeadsCount;
-  renderLineChart($('#anLeadActivityChart'), leadSeries, 'leads');
+/* ---- Executive summary KPIs ---- */
+function renderExecKpiRow(bounds, prevBounds) {
+  const leadsNow = anContactsInRange(bounds).length;
+  const leadsPrev = anContactsInRange(prevBounds).length;
 
-  const pipelineValue = contacts.filter(isActive).reduce((s, c) => s + (Number(c.value) || 0), 0);
-  $('#anPipelineValue').textContent = fmtMoney(pipelineValue);
-  const maxPipeline = Math.max(1, ...STAGES.map(s => contacts.filter(c => c.stage === s.key).reduce((sum, c) => sum + (Number(c.value) || 0), 0)));
-  $('#anPipelineStages').innerHTML = STAGES.filter(s => s.key !== 'lost').map(s => {
-    const value = contacts.filter(c => c.stage === s.key).reduce((sum, c) => sum + (Number(c.value) || 0), 0);
-    const pct = Math.round((value / maxPipeline) * 100);
-    return `<div class="bar-row"><span class="bar-label">${s.label}</span><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${s.color}"></div></div><span class="bar-value">${fmtMoney(value)}</span></div>`;
-  }).join('');
+  const meetingsNow = anContactsInRange(bounds).filter(c => FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('held')).length;
+  const meetingsPrev = anContactsInRange(prevBounds).filter(c => FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('held')).length;
 
-  const stageChart = $('#stageChart');
-  const maxStage = Math.max(1, ...STAGES.map(s => contacts.filter(c => c.stage === s.key).length));
-  stageChart.innerHTML = STAGES.map(s => {
-    const count = contacts.filter(c => c.stage === s.key).length;
-    const pct = Math.round((count / maxStage) * 100);
-    return `<div class="bar-row"><span class="bar-label">${s.label}</span><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${s.color}"></div></div><span class="bar-value">${count}</span></div>`;
-  }).join('');
+  const convertedNow = contacts.filter(c => c.stage === 'client' && inRange(c.lastActivity, bounds)).length;
+  const convertedPrev = contacts.filter(c => c.stage === 'client' && inRange(c.lastActivity, prevBounds)).length;
 
-  const services = {};
-  contacts.forEach(c => { const s = c.service || 'Unspecified'; services[s] = (services[s] || 0) + 1; });
-  const serviceEntries = Object.entries(services).sort((a, b) => b[1] - a[1]);
-  const maxService = Math.max(1, ...serviceEntries.map(e => e[1]));
-  const serviceChart = $('#serviceChart');
-  serviceChart.innerHTML = serviceEntries.length ? serviceEntries.map(([label, count]) => {
-    const pct = Math.round((count / maxService) * 100);
-    return `<div class="bar-row"><span class="bar-label">${escapeHtml(label)}</span><div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div><span class="bar-value">${count}</span></div>`;
-  }).join('') : emptyStateHtml('No data yet', 'Analytics will populate as contacts come in.');
+  const rateNow = leadsNow ? (convertedNow / leadsNow) * 100 : 0;
+  const ratePrev = leadsPrev ? (convertedPrev / leadsPrev) * 100 : 0;
+
+  const kpis = [
+    { label: 'New Leads', value: leadsNow, delta: pctChangeLabel(leadsNow, leadsPrev), view: 'contacts' },
+    { label: 'Meetings', value: meetingsNow, delta: pctChangeLabel(meetingsNow, meetingsPrev), view: 'appointments' },
+    { label: 'Converted', value: convertedNow, delta: pctChangeLabel(convertedNow, convertedPrev), view: 'contacts' },
+    { label: 'Conversion Rate', value: rateNow.toFixed(1) + '%', delta: ratePrev > 0 ? pctChangeLabel(rateNow, ratePrev) : { text: leadsNow ? 'No prior data' : 'No data yet', positive: null }, deltaIsPts: true, view: null },
+  ];
+  $('#anKpiRow').innerHTML = kpis.map(k => `
+    <div class="exec-kpi ${k.view ? 'clickable' : ''}" data-view="${k.view || ''}">
+      <div class="exec-kpi-label">${k.label.toUpperCase()}</div>
+      <div class="exec-kpi-value">${k.value}</div>
+      <div class="exec-kpi-delta ${k.delta.positive === false ? 'negative' : k.delta.positive === true ? 'positive' : 'neutral'}">${k.delta.text}</div>
+    </div>
+  `).join('');
+  $('#anKpiRow').querySelectorAll('.exec-kpi.clickable').forEach(el => {
+    el.addEventListener('click', () => { contactsFilter = null; goToView(el.dataset.view); });
+  });
+}
+
+/* ---- Lead trend (line chart) ---- */
+function renderLeadTrend(container, days) {
+  const series = buildDailySeries(days, 'leads');
+  renderLineChart(container, series, 'leads');
+}
+function initTrendRangeToggle() {
+  document.querySelectorAll('#anTrendRangeToggle .an-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.dataset.days) === anTrendDays);
+    btn.addEventListener('click', () => {
+      anTrendDays = Number(btn.dataset.days);
+      document.querySelectorAll('#anTrendRangeToggle .an-toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+      renderLeadTrend($('#anTrendChart'), anTrendDays);
+    });
+  });
+}
+
+/* ---- Pipeline conversion table ---- */
+function renderConversionTable(container) {
+  const active = contacts.filter(c => c.stage !== 'lost');
+  const counts = FUNNEL_ORDER.map((key, i) => active.filter(c => FUNNEL_ORDER.indexOf(c.stage) >= i).length);
+  if (!contacts.length) { container.innerHTML = emptyStateHtml('Not enough data yet', 'Pipeline conversion will appear once you have leads.'); return; }
+  const rows = FUNNEL_ORDER.map((key, i) => {
+    const stage = STAGES.find(s => s.key === key);
+    const count = counts[i];
+    const fromPrev = i === 0 ? null : (counts[i - 1] > 0 ? Math.round((count / counts[i - 1]) * 100) : 0);
+    return { stage, count, fromPrev };
+  });
+  const overall = counts[0] > 0 ? Math.round((counts[counts.length - 1] / counts[0]) * 100) : 0;
+  container.innerHTML = `
+    <table class="exec-table">
+      <thead><tr><th>Stage</th><th style="text-align:right;">Leads</th><th style="text-align:right;">From Previous</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr class="exec-clickable-row" data-stage="${r.stage.key}">
+            <td><span class="dot" style="background:${r.stage.color}"></span>${r.stage.label}</td>
+            <td style="text-align:right;font-weight:700;">${r.count}</td>
+            <td style="text-align:right;">${r.fromPrev === null ? '—' : r.fromPrev + '%'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <div class="exec-overall-conversion">Overall conversion: <strong>${overall}%</strong></div>
+  `;
+  container.querySelectorAll('.exec-clickable-row').forEach(row => {
+    row.addEventListener('click', () => {
+      contactsFilter = { label: STAGES.find(s => s.key === row.dataset.stage).label, predicate: (c) => c.stage === row.dataset.stage };
+      goToView('contacts');
+    });
+  });
+}
+
+/* ---- Pipeline value summary ---- */
+function renderValueSummary(container) {
+  const open = contacts.filter(isActive).reduce((s, c) => s + (Number(c.value) || 0), 0);
+  const won = contacts.filter(c => c.stage === 'client').reduce((s, c) => s + (Number(c.value) || 0), 0);
+  const dealCount = contacts.filter(c => Number(c.value) > 0).length;
+  const avgDeal = dealCount ? (open + won) / dealCount : 0;
+  container.innerHTML = `
+    <div class="exec-value-hero">${fmtMoney(open)}<span class="exec-value-hero-sub">Open pipeline</span></div>
+    <div class="exec-value-grid">
+      <div><div class="oi-label">Won</div><div class="oi-value" style="color:var(--success);">${fmtMoney(won)}</div></div>
+      <div><div class="oi-label">Open</div><div class="oi-value" style="color:var(--primary);">${fmtMoney(open)}</div></div>
+      <div><div class="oi-label">Average Deal</div><div class="oi-value">${fmtMoney(avgDeal)}</div></div>
+    </div>
+  `;
+}
+
+/* ---- Lead aging ---- */
+function renderAgingChart(container) {
+  const active = contacts.filter(isActive);
+  const buckets = [
+    { label: '0–3 days', min: 0, max: 3, count: 0 },
+    { label: '4–7 days', min: 4, max: 7, count: 0 },
+    { label: '8–14 days', min: 8, max: 14, count: 0 },
+    { label: '15–30 days', min: 15, max: 30, count: 0 },
+    { label: '30+ days', min: 31, max: Infinity, count: 0, warn: true },
+  ];
+  active.forEach(c => {
+    const days = Math.floor((Date.now() - new Date(c.lastActivity || c.createdAt).getTime()) / DAY);
+    const bucket = buckets.find(b => days >= b.min && days <= b.max);
+    if (bucket) bucket.count++;
+  });
+  if (!active.length) { container.innerHTML = emptyStateHtml('Not enough data yet', 'Lead aging will appear once you have active leads.'); return; }
+  const max = Math.max(1, ...buckets.map(b => b.count));
+  container.innerHTML = buckets.map(b => `
+    <div class="aging-row ${b.warn ? 'warn' : ''}" data-min="${b.min}" data-max="${b.max === Infinity ? '' : b.max}">
+      <span class="aging-label">${b.label}</span>
+      <div class="aging-track"><div class="aging-fill" style="width:${Math.max(6, Math.round((b.count / max) * 100))}%"></div></div>
+      <span class="aging-count">${b.count}</span>
+    </div>
+  `).join('');
+  container.querySelectorAll('.aging-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const min = Number(row.dataset.min), max = row.dataset.max ? Number(row.dataset.max) : Infinity;
+      contactsFilter = {
+        label: row.querySelector('.aging-label').textContent,
+        predicate: (c) => {
+          if (!isActive(c)) return false;
+          const days = Math.floor((Date.now() - new Date(c.lastActivity || c.createdAt).getTime()) / DAY);
+          return days >= min && days <= max;
+        }
+      };
+      goToView('contacts');
+    });
+  });
+}
+
+/* ---- Leads needing attention ---- */
+function nextActionFor(c) {
+  if (c.stage === 'new' || c.stage === 'confirmed') return 'Follow up';
+  if (c.stage === 'held') return 'Send proposal';
+  if (c.stage === 'proposal') return 'Follow up on proposal';
+  return 'Check in';
+}
+function renderAttentionTable(container) {
+  const active = contacts.filter(isActive);
+  const withDays = active.map(c => ({ c, days: Math.floor((Date.now() - new Date(c.lastActivity || c.createdAt).getTime()) / DAY) }));
+  const flagged = withDays.filter(x => x.days >= 2 || followupBucket(x.c) === 'overdue').sort((a, b) => b.days - a.days).slice(0, 10);
+  if (!flagged.length) { container.innerHTML = emptyStateHtml("You're all caught up", 'No leads currently need attention.'); return; }
+  container.innerHTML = `
+    <table class="exec-table">
+      <thead><tr><th>Lead</th><th>Current Stage</th><th style="text-align:right;">Days in Stage</th><th style="text-align:right;">Value</th><th>Next Action</th><th>Status</th></tr></thead>
+      <tbody>
+        ${flagged.map(({ c, days }) => {
+          const stage = stageOf(c);
+          const status = followupBucket(c) === 'overdue' ? 'Overdue' : 'Needs Attention';
+          const statusColor = status === 'Overdue' ? 'var(--error)' : 'var(--warning)';
+          return `
+            <tr class="exec-clickable-row" data-id="${c.id}">
+              <td><div class="name-cell"><div class="avatar">${initials(c.name)}</div>${escapeHtml(c.name)}</div></td>
+              <td><span class="status-badge" style="background:${stage.color}1a;color:${stage.color}">${stage.label}</span></td>
+              <td style="text-align:right;">${days} day${days === 1 ? '' : 's'}</td>
+              <td style="text-align:right;">${c.value ? fmtMoney(c.value) : '—'}</td>
+              <td>${nextActionFor(c)}</td>
+              <td><span class="status-badge" style="background:${statusColor}1a;color:${statusColor}">${status}</span></td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+  container.querySelectorAll('.exec-clickable-row').forEach(row => {
+    row.addEventListener('click', () => { const c = contacts.find(x => x.id === row.dataset.id); if (c) openModal(c); });
+  });
+}
+
+/* ---- Lead source performance ---- */
+function renderSourceTable(container) {
+  const withSource = contacts.filter(c => c.source);
+  if (!withSource.length) {
+    container.innerHTML = `
+      ${emptyStateHtml('Lead source tracking isn\'t available yet', 'Add a Lead Source when creating or editing a contact, and this section will populate automatically.')}
+      <button class="btn btn-secondary btn-sm" id="anAddSourceBtn" style="margin:0 auto;display:block;">Add lead source to a contact</button>
+    `;
+    const btn = $('#anAddSourceBtn');
+    if (btn) btn.addEventListener('click', () => { if (contacts[0]) openModal(contacts[0]); });
+    return;
+  }
+  const sources = {};
+  withSource.forEach(c => {
+    sources[c.source] = sources[c.source] || { leads: 0, meetings: 0, clients: 0, value: 0 };
+    sources[c.source].leads++;
+    if (FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('held')) sources[c.source].meetings++;
+    if (c.stage === 'client') sources[c.source].clients++;
+    if (isActive(c)) sources[c.source].value += Number(c.value) || 0;
+  });
+  container.innerHTML = `
+    <table class="exec-table">
+      <thead><tr><th>Source</th><th style="text-align:right;">Leads</th><th style="text-align:right;">Meetings</th><th style="text-align:right;">Clients</th><th style="text-align:right;">Conversion</th><th style="text-align:right;">Pipeline Value</th></tr></thead>
+      <tbody>
+        ${Object.entries(sources).sort((a, b) => b[1].leads - a[1].leads).map(([name, s]) => `
+          <tr>
+            <td>${escapeHtml(name)}</td>
+            <td style="text-align:right;">${s.leads}</td>
+            <td style="text-align:right;">${s.meetings}</td>
+            <td style="text-align:right;">${s.clients}</td>
+            <td style="text-align:right;">${s.leads ? Math.round((s.clients / s.leads) * 100) : 0}%</td>
+            <td style="text-align:right;">${fmtMoney(s.value)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+/* ---- Performance by period (weekly) ---- */
+function renderPeriodTable(container, bounds) {
+  const weeks = [];
+  let cursor = new Date(bounds.start);
+  while (cursor <= bounds.end) {
+    const weekStart = new Date(cursor);
+    const weekEnd = new Date(cursor); weekEnd.setDate(weekEnd.getDate() + 6); weekEnd.setHours(23, 59, 59, 999);
+    weeks.push({ start: weekStart, end: weekEnd > bounds.end ? bounds.end : weekEnd });
+    cursor.setDate(cursor.getDate() + 7);
+  }
+  if (!weeks.length || !contacts.length) { container.innerHTML = emptyStateHtml('Not enough data yet', 'Weekly performance will appear as bookings come in.'); return; }
+  container.innerHTML = `
+    <table class="exec-table">
+      <thead><tr><th>Period</th><th style="text-align:right;">New Leads</th><th style="text-align:right;">Meetings</th><th style="text-align:right;">Proposals</th><th style="text-align:right;">Clients</th><th style="text-align:right;">Pipeline Added</th></tr></thead>
+      <tbody>
+        ${weeks.map((w, i) => {
+          const wb = { start: w.start, end: w.end };
+          const created = contacts.filter(c => inRange(c.createdAt, wb));
+          const meetings = contacts.filter(c => inRange(c.lastActivity, wb) && FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('held'));
+          const proposals = contacts.filter(c => c.stage === 'proposal' && inRange(c.lastActivity, wb));
+          const clients = contacts.filter(c => c.stage === 'client' && inRange(c.lastActivity, wb));
+          const valueAdded = created.reduce((s, c) => s + (Number(c.value) || 0), 0);
+          return `
+            <tr>
+              <td>${w.start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${w.end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</td>
+              <td style="text-align:right;">${created.length}</td>
+              <td style="text-align:right;">${meetings.length}</td>
+              <td style="text-align:right;">${proposals.length}</td>
+              <td style="text-align:right;">${clients.length}</td>
+              <td style="text-align:right;">${fmtMoney(valueAdded)}</td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+/* ---- Activity (only real, tracked signals) ---- */
+function renderActivitySummary(container, bounds) {
+  const inR = anContactsInRange(bounds);
+  const followUps = tasks.filter(t => inRange(t.createdAt, bounds)).length;
+  const meetings = inR.filter(c => FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('held')).length;
+  const proposals = inR.filter(c => FUNNEL_ORDER.indexOf(c.stage) >= FUNNEL_ORDER.indexOf('proposal')).length;
+  const clients = inR.filter(c => c.stage === 'client').length;
+  container.innerHTML = `
+    <div class="exec-activity-grid">
+      <div class="exec-activity-item"><div class="oi-label">Follow-Ups</div><div class="oi-value">${followUps}</div></div>
+      <div class="exec-activity-item"><div class="oi-label">Meetings</div><div class="oi-value">${meetings}</div></div>
+      <div class="exec-activity-item"><div class="oi-label">Proposals</div><div class="oi-value">${proposals}</div></div>
+      <div class="exec-activity-item"><div class="oi-label">Clients</div><div class="oi-value">${clients}</div></div>
+    </div>
+    <p class="muted-sub" style="margin-top:14px;">Calls and emails aren't tracked in this CRM yet — connect a phone/email automation to start measuring them here.</p>
+    ${meetings > 0 ? `<div class="exec-flow">${inR.length} leads → ${meetings} meetings → ${clients} clients</div>` : ''}
+  `;
+}
+
+/* ---- Tab renderers ---- */
+function renderOverviewTab(bounds) {
+  renderLeadTrend($('#anTrendChart'), anTrendDays);
+  renderConversionTable($('#anConversionTable'));
+  renderAgingChart($('#anAgingChart'));
+  renderValueSummary($('#anValueSummary'));
+  renderAttentionTable($('#anAttentionTable'));
+  renderPeriodTable($('#anPeriodTable'), bounds);
+}
+function renderLeadsTab(bounds) {
+  renderLeadTrend($('#anLeadsTrendChart'), anTrendDays);
+  renderAgingChart($('#anLeadsAgingChart'));
+  renderSourceTable($('#anSourceTable'));
+}
+function renderPipelineTab() {
+  renderConversionTable($('#anPipelineConversionTable2'));
+  renderValueSummary($('#anPipelineValueSummary2'));
+}
+function renderRevenueTab() {
+  const won = contacts.filter(c => c.stage === 'client').reduce((s, c) => s + (Number(c.value) || 0), 0);
+  const open = contacts.filter(isActive).reduce((s, c) => s + (Number(c.value) || 0), 0);
+  const dealCount = contacts.filter(c => Number(c.value) > 0).length;
+  const avgDeal = dealCount ? (open + won) / dealCount : 0;
+  const revenueSeries = buildDailySeries(anTrendDays, 'value');
+  $('#anRevenueSummary').innerHTML = `
+    <div class="exec-two-col">
+      <div class="exec-block">
+        <h3>Revenue Trend</h3>
+        <p class="muted-sub">Cumulative pipeline value over time.</p>
+        <div class="line-chart-wrap" id="anRevenueChart"></div>
+      </div>
+      <div class="exec-block">
+        <h3>Summary</h3>
+        <div class="exec-value-grid" style="margin-top:8px;">
+          <div><div class="oi-label">Won Revenue</div><div class="oi-value" style="color:var(--success);">${fmtMoney(won)}</div></div>
+          <div><div class="oi-label">Open Pipeline</div><div class="oi-value" style="color:var(--primary);">${fmtMoney(open)}</div></div>
+          <div><div class="oi-label">Average Deal</div><div class="oi-value">${fmtMoney(avgDeal)}</div></div>
+        </div>
+      </div>
+    </div>
+  `;
+  renderLineChart($('#anRevenueChart'), revenueSeries, 'value');
+}
+function renderActivityTab(bounds) {
+  renderActivitySummary($('#anActivitySection'), bounds);
+}
+
+/* ---- Init: tabs, date range ---- */
+function initAnalyticsControls() {
+  $('#anTabs').querySelectorAll('.exec-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      $('#anTabs').querySelectorAll('.exec-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      anTab = tab.dataset.tab;
+      document.querySelectorAll('.an-tab-panel').forEach(p => p.classList.add('hidden'));
+      const idMap = { overview: 'anPanelOverview', leads: 'anPanelLeads', pipeline: 'anPanelPipeline', revenue: 'anPanelRevenue', activity: 'anPanelActivity' };
+      document.getElementById(idMap[anTab]).classList.remove('hidden');
+      renderAnalytics();
+    });
+  });
+  $('#anDateRange').addEventListener('change', (e) => {
+    anDateRangeDays = e.target.value === 'custom' || e.target.value === 'year' ? e.target.value : Number(e.target.value);
+    $('#anCustomRange').classList.toggle('hidden', e.target.value !== 'custom');
+    if (e.target.value !== 'custom') renderAnalytics();
+  });
+  $('#anCustomApply').addEventListener('click', () => {
+    anCustomFrom = $('#anCustomFrom').value; anCustomTo = $('#anCustomTo').value;
+    if (anCustomFrom && anCustomTo) { anDateRangeDays = 'custom'; renderAnalytics(); }
+  });
+  initTrendRangeToggle();
 }
 
 /* ================= CONTACT CRUD ================= */
@@ -1136,6 +1491,7 @@ function populateForm(contact) {
   $('#contactId').value = contact ? contact.id : '';
   $('#fName').value = contact ? contact.name : '';
   $('#fCompany').value = contact ? (contact.company || '') : '';
+  $('#fSource').value = contact ? (contact.source || '') : '';
   $('#fEmail').value = contact ? contact.email : '';
   $('#fPhone').value = contact ? contact.phone : '';
   $('#fService').value = contact ? (contact.service || '') : '';
@@ -1181,6 +1537,7 @@ function initModal() {
     const payload = {
       name: $('#fName').value,
       company: $('#fCompany').value,
+      source: $('#fSource').value,
       email: $('#fEmail').value,
       phone: $('#fPhone').value,
       service: $('#fService').value,
@@ -1217,7 +1574,7 @@ const VIEW_META = {
   documents: ['Documents', 'Centralize client contracts, proposals, and files.'],
   projects: ['Projects', 'Lightweight project tracking, connected to your clients.'],
   automations: ['Automations', 'How bookings flow into this CRM.'],
-  analytics: ['Performance', 'How your pipeline and billing are performing.'],
+  analytics: ['Analytics', 'Understand how your leads, pipeline, and client activity are performing.'],
   settings: ['API / Settings', 'Connect your booking automation to this CRM.'],
 };
 const VIEW_SECTION_IDS = {
@@ -1315,6 +1672,7 @@ initBilling();
 initDocuments();
 initProjects();
 initQuickActionsBar();
+initAnalyticsControls();
 initFocusViewAll();
 loadContacts();
 loadTasks();

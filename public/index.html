@@ -388,38 +388,123 @@
 
       <!-- ANALYTICS -->
       <section id="analyticsView" class="view hidden">
-        <div class="two-col" style="margin-bottom:20px;">
-          <div class="panel">
-            <h3 style="margin:0 0 4px;">Lead Activity</h3>
-            <p class="muted-sub">New leads · Last 14 days</p>
-            <div class="perf-big-number" id="anLeadActivityNumber">0</div>
-            <div class="line-chart-wrap" id="anLeadActivityChart"></div>
-          </div>
-          <div class="panel">
-            <h3 style="margin:0 0 4px;">Pipeline</h3>
-            <p class="muted-sub">Total pipeline value</p>
-            <div class="perf-big-number accent" id="anPipelineValue">$0</div>
-            <div class="bar-chart" id="anPipelineStages" style="margin-top:12px;"></div>
-          </div>
-        </div>
-        <div class="analytics-grid">
-          <div class="panel">
-            <h3>Pipeline by stage</h3>
-            <p class="muted-sub">Contacts and value at each stage right now.</p>
-            <div class="bar-chart" id="stageChart"></div>
-          </div>
-          <div class="panel">
-            <h3>Contacts by service</h3>
-            <p class="muted-sub">Which service line is generating the most bookings.</p>
-            <div class="bar-chart" id="serviceChart"></div>
+        <div class="exec-header">
+          <div class="exec-range">
+            <select id="anDateRange">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="year">This Year</option>
+              <option value="custom">Custom Range</option>
+            </select>
+            <div class="exec-custom-range hidden" id="anCustomRange">
+              <input type="date" id="anCustomFrom" /> <span>to</span> <input type="date" id="anCustomTo" />
+              <button class="btn btn-secondary btn-sm" id="anCustomApply">Apply</button>
+            </div>
           </div>
         </div>
-        <div class="section-heading"><h2>Business snapshot</h2></div>
-        <div class="stats" style="padding-left:0;padding-right:0;">
-          <div class="stat-card"><span class="stat-label">Total Leads</span><span class="stat-value" id="anTotal">0</span></div>
-          <div class="stat-card"><span class="stat-label">Won Clients</span><span class="stat-value" id="anWon">0</span></div>
-          <div class="stat-card"><span class="stat-label">Win Rate</span><span class="stat-value" id="anRate">0%</span></div>
-          <div class="stat-card"><span class="stat-label">Outstanding Billing</span><span class="stat-value" id="anOutstanding">$0</span></div>
+
+        <div class="exec-tabs" id="anTabs">
+          <button class="exec-tab active" data-tab="overview">Overview</button>
+          <button class="exec-tab" data-tab="leads">Leads</button>
+          <button class="exec-tab" data-tab="pipeline">Pipeline</button>
+          <button class="exec-tab" data-tab="revenue">Revenue</button>
+          <button class="exec-tab" data-tab="activity">Activity</button>
+        </div>
+
+        <!-- Executive summary (Overview + reused elsewhere) -->
+        <div class="exec-kpi-row" id="anKpiRow"></div>
+
+        <!-- OVERVIEW TAB -->
+        <div class="an-tab-panel" id="anPanelOverview">
+          <div class="exec-two-col">
+            <div class="exec-block">
+              <div class="exec-block-header">
+                <h3>Lead Generation</h3>
+                <div class="chart-toggle" id="anTrendRangeToggle">
+                  <button class="an-toggle-btn" data-days="7">7D</button>
+                  <button class="an-toggle-btn" data-days="30">30D</button>
+                  <button class="an-toggle-btn" data-days="90">90D</button>
+                </div>
+              </div>
+              <p class="muted-sub">New leads over time</p>
+              <div class="line-chart-wrap" id="anTrendChart"></div>
+            </div>
+            <div class="exec-block">
+              <h3>Pipeline Conversion</h3>
+              <p class="muted-sub">Where leads are right now, stage by stage.</p>
+              <div id="anConversionTable"></div>
+            </div>
+          </div>
+          <div class="exec-two-col">
+            <div class="exec-block">
+              <h3>Lead Aging</h3>
+              <p class="muted-sub">How long active leads have gone without progress.</p>
+              <div id="anAgingChart"></div>
+            </div>
+            <div class="exec-block">
+              <h3>Pipeline Value</h3>
+              <p class="muted-sub">Open vs. won, right now.</p>
+              <div id="anValueSummary"></div>
+            </div>
+          </div>
+          <div class="exec-block exec-block-full">
+            <h3>Leads Needing Attention</h3>
+            <p class="muted-sub">Contacts that may require your next action.</p>
+            <div id="anAttentionTable"></div>
+          </div>
+          <div class="exec-block exec-block-full">
+            <h3>Performance by Period</h3>
+            <p class="muted-sub">Weekly activity across the selected range.</p>
+            <div id="anPeriodTable"></div>
+          </div>
+        </div>
+
+        <!-- LEADS TAB -->
+        <div class="an-tab-panel hidden" id="anPanelLeads">
+          <div class="exec-block">
+            <div class="exec-block-header"><h3>Lead Generation</h3></div>
+            <p class="muted-sub">New leads over time</p>
+            <div class="line-chart-wrap" id="anLeadsTrendChart"></div>
+          </div>
+          <div class="exec-two-col">
+            <div class="exec-block">
+              <h3>Lead Aging</h3>
+              <p class="muted-sub">How long active leads have gone without progress.</p>
+              <div id="anLeadsAgingChart"></div>
+            </div>
+            <div class="exec-block">
+              <h3>Lead Source Performance</h3>
+              <p class="muted-sub">Which sources bring in the best leads.</p>
+              <div id="anSourceTable"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PIPELINE TAB -->
+        <div class="an-tab-panel hidden" id="anPanelPipeline">
+          <div class="exec-two-col">
+            <div class="exec-block">
+              <h3>Pipeline Conversion</h3>
+              <p class="muted-sub">Stage by stage, from real contact data.</p>
+              <div id="anPipelineConversionTable2"></div>
+            </div>
+            <div class="exec-block">
+              <h3>Pipeline Value</h3>
+              <p class="muted-sub">Open vs. won, right now.</p>
+              <div id="anPipelineValueSummary2"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- REVENUE TAB -->
+        <div class="an-tab-panel hidden" id="anPanelRevenue">
+          <div id="anRevenueSummary"></div>
+        </div>
+
+        <!-- ACTIVITY TAB -->
+        <div class="an-tab-panel hidden" id="anPanelActivity">
+          <div id="anActivitySection"></div>
         </div>
       </section>
 
@@ -465,6 +550,19 @@
               </select>
             </label>
             <label>Value ($)<input id="fValue" type="number" min="0" /></label>
+          </div>
+          <div class="form-row">
+            <label>Lead Source
+              <select id="fSource">
+                <option value="">—</option>
+                <option>Referral</option>
+                <option>Website</option>
+                <option>LinkedIn</option>
+                <option>Instagram</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <span></span>
           </div>
           <div class="form-row">
             <label>Booking Date<input id="fDate" type="text" placeholder="2026-09-10" /></label>

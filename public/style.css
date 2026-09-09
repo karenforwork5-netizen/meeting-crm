@@ -570,6 +570,81 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .perf-big-number { font-size: 32px; font-weight: 800; letter-spacing: -0.01em; margin: 6px 0 10px; color: var(--text); }
 .perf-big-number.accent { color: var(--primary); }
 .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* Executive Minimal Analytics */
+.exec-header { display: flex; align-items: flex-start; justify-content: flex-end; gap: 16px; flex-wrap: wrap; padding: 0 0 4px; }
+.exec-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.exec-range select {
+  appearance: none; background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  padding: 9px 30px 9px 12px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23858197' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center; background-size: 14px;
+}
+.exec-custom-range { display: flex; align-items: center; gap: 6px; }
+.exec-custom-range span { font-size: 12px; color: var(--text-muted); }
+
+.exec-tabs { display: flex; gap: 4px; margin: 18px 0 20px; overflow-x: auto; border-bottom: 1px solid var(--border); }
+.exec-tab {
+  background: none; border: none; padding: 10px 4px; margin-right: 22px; font-size: 13.5px; font-weight: 600;
+  color: var(--text-muted); cursor: pointer; white-space: nowrap; border-bottom: 2px solid transparent; transition: color .15s ease, border-color .15s ease;
+}
+.exec-tab:hover { color: var(--text); }
+.exec-tab.active { color: var(--plum); border-bottom-color: var(--primary); font-weight: 700; }
+
+.exec-kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 28px; }
+.exec-kpi { padding: 0; }
+.exec-kpi.clickable { cursor: pointer; }
+.exec-kpi-label { font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 6px; }
+.exec-kpi-value { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; color: var(--text); line-height: 1.1; transition: opacity .15s ease; }
+.exec-kpi-delta { font-size: 12px; font-weight: 600; margin-top: 5px; }
+.exec-kpi-delta.positive { color: var(--success); }
+.exec-kpi-delta.negative { color: var(--error); }
+.exec-kpi-delta.neutral { color: var(--text-muted); }
+
+.exec-two-col { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; margin-bottom: 20px; align-items: start; }
+.exec-block {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 20px;
+}
+.exec-block-full { margin-bottom: 20px; }
+.exec-block h3 { margin: 0 0 4px; font-size: 15px; }
+.exec-block-header { display: flex; align-items: center; justify-content: space-between; }
+.exec-block-header h3 { margin: 0; }
+
+.an-toggle-btn {
+  border: none; background: transparent; color: var(--plum); font-size: 12px; font-weight: 700;
+  padding: 6px 12px; border-radius: 8px; cursor: pointer;
+}
+.an-toggle-btn.active { background: var(--surface); box-shadow: var(--shadow); }
+
+.exec-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.exec-table th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted);
+  font-weight: 700; padding: 8px 10px; border-bottom: 1px solid var(--border);
+}
+.exec-table td { padding: 12px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.exec-table tr:last-child td { border-bottom: none; }
+.exec-table tbody tr:hover { background: var(--bg); }
+.exec-clickable-row { cursor: pointer; }
+.exec-overall-conversion { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 13px; color: var(--text-muted); }
+.exec-overall-conversion strong { color: var(--plum); font-size: 15px; }
+
+.exec-value-hero { font-size: 30px; font-weight: 800; color: var(--primary); }
+.exec-value-hero-sub { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-top: 2px; }
+.exec-value-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+
+.aging-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; cursor: pointer; border-radius: 8px; }
+.aging-row:hover { background: var(--bg); }
+.aging-label { width: 84px; font-size: 12px; color: var(--text-muted); font-weight: 600; flex-shrink: 0; }
+.aging-track { flex: 1; height: 10px; background: var(--lavender); border-radius: 6px; overflow: hidden; }
+.aging-fill { height: 100%; border-radius: 6px; background: var(--primary); }
+.aging-row.warn .aging-fill { background: var(--warning); }
+.aging-count { width: 26px; text-align: right; font-size: 13px; font-weight: 700; }
+
+.exec-activity-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.exec-activity-item { background: var(--bg); border-radius: var(--radius-sm); padding: 14px 16px; }
+.exec-activity-item .oi-value { font-size: 22px; }
+.exec-flow { margin-top: 16px; font-size: 14px; font-weight: 700; color: var(--plum); }
 .bar-chart { display: flex; flex-direction: column; gap: 12px; }
 .bar-row { display: flex; align-items: center; gap: 10px; }
 .bar-label { width: 108px; font-size: 12px; color: var(--text-muted); font-weight: 600; flex-shrink: 0; }
@@ -689,6 +764,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); }
   .focus-grid { grid-template-columns: repeat(2, 1fr); }
   .two-col { grid-template-columns: 1fr; }
   .analytics-grid { grid-template-columns: 1fr; }
+  .exec-two-col { grid-template-columns: 1fr; }
+  .exec-kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .exec-activity-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .exec-value-grid { grid-template-columns: 1fr; }
+  .exec-table { display: block; overflow-x: auto; white-space: nowrap; }
+  .exec-kpi-row { grid-template-columns: 1fr 1fr; gap: 16px; }
+  .exec-activity-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 860px) {
   .sidebar {
