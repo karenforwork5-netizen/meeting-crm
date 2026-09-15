@@ -606,6 +606,13 @@ app.post('/api/job-finder/search', async (req, res) => {
 
     // One history entry per search click, covering every keyword in it —
     // never one entry per keyword, so a 3-keyword search is one session record.
+    // `results` persists the exact same raw discovery objects returned below
+    // (title/source/sourceUrl/snippet/keyword/matchedKeywords/alreadySaved/etc.)
+    // so a page reload — or picking an older entry — can restore what was
+    // actually found without a new Brave/Google request. Match score,
+    // employment type, and compensation are NOT stored here: those are
+    // computed client-side from this same raw data (jfAnalyzeResult), so
+    // restoring just re-runs that existing, unchanged pipeline.
     const historyList = jobFinderHistoryStore.read();
     historyList.unshift({
       id: crypto.randomUUID(),
@@ -617,6 +624,7 @@ app.post('/api/job-finder/search', async (req, res) => {
       requestsMade,
       uniqueResultCount: deduped.length,
       searchedAt: new Date().toISOString(),
+      results: deduped,
     });
     jobFinderHistoryStore.write(historyList);
 

@@ -117,7 +117,18 @@ async function loadDocuments() { documents = await (await fetch('/api/documents'
 async function loadJobs() { jobs = await (await fetch('/api/jobs')).json(); if (['jobhunt', 'jobfinder'].includes(currentView)) render(); }
 async function loadJobProfile() { jobProfile = await (await fetch('/api/job-profile')).json(); if (['jobhunt', 'jobfinder'].includes(currentView)) render(); }
 async function loadJobFinderKeywords() { jfKeywords = await (await fetch('/api/job-finder/keywords')).json(); if (currentView === 'jobfinder') render(); }
-async function loadJobFinderHistory() { jfHistory = await (await fetch('/api/job-finder/history')).json(); if (currentView === 'jobfinder') render(); }
+let jfInitialResultsRestoreAttempted = false; // ensures the one-time page-load restore never re-fires on later history refreshes (e.g. after a live search)
+async function loadJobFinderHistory() {
+  jfHistory = await (await fetch('/api/job-finder/history')).json();
+  if (!jfInitialResultsRestoreAttempted) {
+    jfInitialResultsRestoreAttempted = true;
+    const latest = jfHistory[0];
+    if (!jfHasSearched && latest && Array.isArray(latest.results) && latest.results.length) {
+      jfRestoreResultsFromHistoryEntry(latest);
+    }
+  }
+  if (currentView === 'jobfinder') render();
+}
 async function loadJobFinderStatus() { const r = await (await fetch('/api/job-finder/status')).json(); jfConfigured = !!r.configured; if (currentView === 'jobfinder') render(); }
 
 function baseFiltered() {
@@ -2359,6 +2370,48 @@ function jfConfidenceNoteHtml(confidence) {
   if (!confidence || confidence === 'Not specified') return '';
   return ` <span class="muted-sub" style="font-size:10.5px;">(Confidence: ${escapeHtml(confidence)})</span>`;
 }
+function jfBuildSearchWarning(perKeywordErrors, uniqueResultCount, totalKeywordCount) {
+  const failedKeywords = Object.keys(perKeywordErrors || {});
+  if (!failedKeywords.length) return '';
+  const successCount = uniqueResultCount || 0;
+  return `${failedKeywords.join(', ')} search${failedKeywords.length === 1 ? '' : 'es'} failed. ${successCount} result${successCount === 1 ? '' : 's'} ${successCount === 1 ? 'was' : 'were'} returned from the other keyword${totalKeywordCount - failedKeywords.length === 1 ? '' : 's'}.`;
+}
+// Same URL normalization as the server's normalizeUrlForDedup (server.js),
+// duplicated client-side only to freshly recompute "already saved" against
+// the current jobs list when restoring old results — the actual save/dedup
+// pipeline itself is untouched.
+function jfNormalizeUrlForRestore(url) {
+  if (!url) return '';
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase().replace(/^www\./, '');
+    const pathname = u.pathname.replace(/\/+$/, '');
+    return `${host}${pathname}`.toLowerCase();
+  } catch { return String(url).trim().toLowerCase(); }
+}
+// Restores a persisted Job Finder history entry's raw results into jfResults
+// — used both for the one-time page-load restore and for clicking an older
+// Recent Search entry. Never calls Brave/Google: it re-runs the same
+// deterministic jfAnalyzeResult() pipeline already used for live results
+// against the entry's stored raw discovery data, and recomputes "already
+// saved" against the currently-loaded jobs list (in case a save happened
+// since this search ran).
+function jfRestoreResultsFromHistoryEntry(entry) {
+  const savedUrls = new Set((jobs || []).map(j => jfNormalizeUrlForRestore(j.sourceUrl)).filter(Boolean));
+  jfResults = (entry.results || []).map(r => {
+    const analyzed = jfAnalyzeResult(r);
+    analyzed.alreadySaved = analyzed.sourceUrl ? savedUrls.has(jfNormalizeUrlForRestore(analyzed.sourceUrl)) : false;
+    return analyzed;
+  });
+  jfPerKeywordCounts = entry.perKeywordCounts || {};
+  jfPerKeywordErrors = entry.perKeywordErrors || {};
+  jfHasSearched = true;
+  jfSearchStatus = jfResults.length ? 'completed' : 'no_results';
+  jfSearchError = '';
+  jfSearchWarning = jfBuildSearchWarning(jfPerKeywordErrors, entry.uniqueResultCount, (entry.keywords || []).length);
+  jfSelectedIds = new Set();
+  jfSelectedResultId = null;
+}
 async function runJobFinderSearch() {
   if (!jfKeywords.length) { showToast('Add at least one keyword first'); return; }
   if (jfSearchStatus === 'searching') return; // one search in flight at a time — a stray extra click is a no-op
@@ -2386,11 +2439,7 @@ async function runJobFinderSearch() {
       jfPerKeywordErrors = data.perKeywordErrors || {};
       jfResults = (data.results || []).map(jfAnalyzeResult);
       jfSearchStatus = jfResults.length ? 'completed' : 'no_results';
-      const failedKeywords = Object.keys(jfPerKeywordErrors);
-      if (failedKeywords.length) {
-        const successCount = data.uniqueResultCount || 0;
-        jfSearchWarning = `${failedKeywords.join(', ')} search${failedKeywords.length === 1 ? '' : 'es'} failed. ${successCount} result${successCount === 1 ? '' : 's'} ${successCount === 1 ? 'was' : 'were'} returned from the other keyword${jfKeywords.length - failedKeywords.length === 1 ? '' : 's'}.`;
-      }
+      jfSearchWarning = jfBuildSearchWarning(jfPerKeywordErrors, data.uniqueResultCount, jfKeywords.length);
     }
   } catch (err) {
     jfSearchStatus = 'error';
@@ -2626,22 +2675,24 @@ function jfSearchStatusNoticeHtml() {
 function renderJfRecentSearchesHtml() {
   if (!jfHistory.length) return `<p class="muted-sub" style="margin:0;">No searches performed yet.</p>`;
   return jfHistory.slice(0, 5).map(h => {
+    const hasStoredResults = Array.isArray(h.results) && h.results.length > 0;
+    const clickableAttrs = `class="appt-qi-row jf-recent-search-row" data-history-id="${escapeHtml(h.id)}" style="cursor:pointer;" title="${hasStoredResults ? 'Click to view these results again' : 'No stored results available for this older search'}"`;
     if (Array.isArray(h.keywords)) {
       const failedCount = Object.keys(h.perKeywordErrors || {}).length;
       const countText = failedCount
         ? `${h.uniqueResultCount} unique · ${failedCount} keyword${failedCount === 1 ? '' : 's'} failed`
         : `${h.uniqueResultCount} unique result${h.uniqueResultCount === 1 ? '' : 's'}`;
       return `
-        <div class="appt-qi-row">
+        <div ${clickableAttrs}>
           <span class="appt-qi-label">${escapeHtml(h.keywords.join(' + '))}</span>
-          <span class="appt-qi-value">${fmtDateShort(h.searchedAt.slice(0, 10))} · ${countText}</span>
+          <span class="appt-qi-value">${fmtDateShort(h.searchedAt.slice(0, 10))} · ${countText}${hasStoredResults ? '' : ' <span class="muted-sub">(not available)</span>'}</span>
         </div>
       `;
     }
     return `
-      <div class="appt-qi-row">
+      <div ${clickableAttrs}>
         <span class="appt-qi-label">${escapeHtml(h.keyword)}</span>
-        <span class="appt-qi-value">${fmtDateShort(h.searchedAt.slice(0, 10))} · ${h.error ? 'error' : `${h.resultCount} result${h.resultCount === 1 ? '' : 's'}`}</span>
+        <span class="appt-qi-value">${fmtDateShort(h.searchedAt.slice(0, 10))} · ${h.error ? 'error' : `${h.resultCount} result${h.resultCount === 1 ? '' : 's'}`}${hasStoredResults ? '' : ' <span class="muted-sub">(not available)</span>'}</span>
       </div>
     `;
   }).join('');
@@ -2752,6 +2803,16 @@ function initJobFinderInteractions() {
     e.target.value = n;
   });
   $('#jfFindJobsBtn').addEventListener('click', runJobFinderSearch);
+  $('#jobFinderContent').querySelectorAll('.jf-recent-search-row').forEach(row => row.addEventListener('click', () => {
+    const entry = jfHistory.find(h => h.id === row.dataset.historyId);
+    if (entry && Array.isArray(entry.results) && entry.results.length) {
+      jfRestoreResultsFromHistoryEntry(entry);
+      showToast('Restored previous search results.');
+      renderJobFinder();
+    } else {
+      showToast('No stored results available for this older search.');
+    }
+  }));
   $('#jfSearchInput').addEventListener('input', (e) => { jfSearchTerm = e.target.value; renderJobFinder(); });
   $('#jfKeywordSelect').addEventListener('change', (e) => { jfKeywordFilter = e.target.value; renderJobFinder(); });
   $('#jfMatchSelect').addEventListener('change', (e) => { jfMatchFilter = e.target.value; renderJobFinder(); });
