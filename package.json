@@ -5,7 +5,8 @@
   "description": "Pipeline CRM that captures everyone who books a meeting",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test:kai": "node scripts/test-kai.js"
   },
   "dependencies": {
     "express": "^4.19.2",

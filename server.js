@@ -3,6 +3,25 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
+const jobFinderService = require('./jobFinderService');
+
+// Minimal, dependency-free .env loader — keeps Google search credentials out
+// of source control and out of any frontend code. Never overwrites a var
+// already set in the real environment (e.g. by the OS or a process manager).
+(function loadDotEnv() {
+  const envPath = path.join(__dirname, '.env');
+  if (!fs.existsSync(envPath)) return;
+  fs.readFileSync(envPath, 'utf-8').split('\n').forEach((line) => {
+    const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)\s*$/);
+    if (!match) return;
+    const key = match[1];
+    let value = match[2] || '';
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = value;
+  });
+})();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -11,6 +30,10 @@ const TASKS_PATH = path.join(__dirname, 'data', 'tasks.json');
 const INVOICES_PATH = path.join(__dirname, 'data', 'invoices.json');
 const PROJECTS_PATH = path.join(__dirname, 'data', 'projects.json');
 const DOCUMENTS_PATH = path.join(__dirname, 'data', 'documents.json');
+const JOBS_PATH = path.join(__dirname, 'data', 'jobs.json');
+const JOB_PROFILE_PATH = path.join(__dirname, 'data', 'jobProfile.json');
+const JOB_FINDER_KEYWORDS_PATH = path.join(__dirname, 'data', 'jobFinderKeywords.json');
+const JOB_FINDER_HISTORY_PATH = path.join(__dirname, 'data', 'jobFinderHistory.json');
 const UPLOADS_DIR = path.join(__dirname, 'data', 'uploads');
 const STAGES = ['new', 'confirmed', 'held', 'proposal', 'client', 'lost'];
 const TASK_PRIORITIES = ['High', 'Medium', 'Low'];
@@ -21,6 +44,9 @@ const LEAD_SOURCES = ['LinkedIn', 'OnlineJobs.ph', 'Upwork', 'Referral', 'Websit
 const SOURCE_STATUSES = ['New', 'Contacted', 'Responded', 'Qualified', 'Meeting Scheduled', 'Won', 'Lost'];
 const SOURCE_TYPES = ['manual', 'api', 'import', 'integration'];
 const BILLING_TYPES = ['Not Set', 'Hourly', 'Fixed Project', 'Retainer', 'Commission'];
+const JOB_SOURCES = ['OnlineJobs.ph', 'LinkedIn', 'Indeed', 'Upwork', 'Referral', 'Website', 'Direct', 'Other'];
+const JOB_EMPLOYMENT_TYPES = ['Full-Time', 'Part-Time', 'Contract', 'Freelance', 'Temporary', 'Other'];
+const JOB_STATUSES = ['Saved', 'Reviewing', 'Ready to Apply', 'Applied', 'Follow-Up', 'Interview', 'Rejected', 'Hired'];
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -86,6 +112,35 @@ const tasksStore = makeStore(TASKS_PATH);
 const invoicesStore = makeStore(INVOICES_PATH);
 const projectsStore = makeStore(PROJECTS_PATH);
 const documentsStore = makeStore(DOCUMENTS_PATH);
+const jobsStore = makeStore(JOBS_PATH);
+const jobFinderKeywordsStore = makeStore(JOB_FINDER_KEYWORDS_PATH);
+const jobFinderHistoryStore = makeStore(JOB_FINDER_HISTORY_PATH);
+
+// Job Profile / CV — a single record (not a list) used as the source of truth
+// for future job-matching. No fake profile is ever seeded; every field starts
+// empty until the user fills it in via Job Hunt settings.
+const JOB_PROFILE_DEFAULTS = {
+  fullName: '', professionalTitle: '', summary: '',
+  services: [], skills: [], tools: [], crmCapabilities: [],
+  workHistory: [], languages: [], education: [],
+  preferredRoles: [], preferredEmploymentType: '', preferredSalary: '', workPreferences: '',
+  portfolioUrl: '', cvReference: '',
+};
+function ensureJobProfile() {
+  const dir = path.dirname(JOB_PROFILE_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(JOB_PROFILE_PATH)) {
+    fs.writeFileSync(JOB_PROFILE_PATH, JSON.stringify({ ...JOB_PROFILE_DEFAULTS, updatedAt: new Date().toISOString() }, null, 2));
+  }
+}
+// Merges in any fields added to the schema since a profile was first created,
+// so an older jobProfile.json on disk still gets the new keys without losing data.
+function readJobProfile() {
+  ensureJobProfile();
+  const raw = JSON.parse(fs.readFileSync(JOB_PROFILE_PATH, 'utf-8'));
+  return { ...JOB_PROFILE_DEFAULTS, ...raw };
+}
+function writeJobProfile(profile) { fs.writeFileSync(JOB_PROFILE_PATH, JSON.stringify(profile, null, 2)); }
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 const upload = multer({
@@ -326,6 +381,249 @@ app.delete('/api/documents/:id', (req, res) => {
   }
   documentsStore.write(docs.filter(d => d.id !== req.params.id));
   res.json({ ok: true });
+});
+
+/* ---------------- Job Hunt — job opportunities (manual entry / paste-a-URL only;
+   no scraping, no automated login, no browser automation of any job site) ---------------- */
+// Phase 2C matching fields. Defaults are merged in lazily (on read) so jobs
+// created before matching existed still get these fields without a rewrite.
+const JOB_MATCH_DEFAULTS = {
+  matchScore: null, matchConfidence: null,
+  matchingSkills: [], partialSkills: [], missingSkills: [],
+  matchedRequirements: [], partialRequirements: [], missingRequirements: [],
+  matchExplanation: '', matchStatus: 'Not analyzed', analyzedAt: null,
+};
+// Phase 2D application-preparation fields. applicationQuestions changed shape
+// from a free-text string to a structured [{question, answer}] list — safe
+// because every existing job had it empty; withJobMatchDefaults coerces any
+// leftover non-array value defensively.
+const JOB_APPLICATION_DEFAULTS = {
+  whyGoodFit: '', applicationQuestions: [],
+  applicationPreparedAt: null, applicationLastUpdatedAt: null,
+};
+function withJobMatchDefaults(job) {
+  const merged = { ...JOB_MATCH_DEFAULTS, ...JOB_APPLICATION_DEFAULTS, ...job };
+  if (!Array.isArray(merged.applicationQuestions)) merged.applicationQuestions = [];
+  return merged;
+}
+
+app.get('/api/jobs', (req, res) => res.json(jobsStore.read().map(withJobMatchDefaults)));
+app.post('/api/jobs', (req, res) => {
+  const body = req.body || {};
+  // Company is required by the Add Job form (HTML `required`), but not
+  // enforced here — a Job Finder discovery result frequently has no
+  // discoverable company name, and it must never be invented just to
+  // satisfy this check. The UI already shows "Not provided" for an empty one.
+  if (!body.title) return res.status(400).json({ error: 'title is required' });
+  if (body.sourceUrl && !/^https?:\/\//i.test(body.sourceUrl)) return res.status(400).json({ error: 'sourceUrl must be a valid http(s) URL' });
+  const now = new Date().toISOString();
+  const job = {
+    id: crypto.randomUUID(),
+    title: body.title,
+    company: body.company || '',
+    source: JOB_SOURCES.includes(body.source) ? body.source : 'Other',
+    sourceUrl: body.sourceUrl || '',
+    salary: body.salary || '',
+    salaryMin: body.salaryMin !== undefined && body.salaryMin !== '' ? Number(body.salaryMin) : null,
+    salaryMax: body.salaryMax !== undefined && body.salaryMax !== '' ? Number(body.salaryMax) : null,
+    salaryType: body.salaryType || '',
+    employmentType: JOB_EMPLOYMENT_TYPES.includes(body.employmentType) ? body.employmentType : 'Other',
+    // Additive fields from Job Finder's employment/compensation extraction
+    // (Phase 2G) — never invented, so an absent value stays null/"Not specified"
+    // rather than being coerced into an existing salary field's shape.
+    compensationType: body.compensationType || 'Not specified',
+    compensationMin: body.compensationMin !== undefined && body.compensationMin !== null && body.compensationMin !== '' ? Number(body.compensationMin) : null,
+    compensationMax: body.compensationMax !== undefined && body.compensationMax !== null && body.compensationMax !== '' ? Number(body.compensationMax) : null,
+    compensationCurrency: body.compensationCurrency || null,
+    location: body.location || '',
+    postedDate: body.postedDate || '',
+    dateAdded: now.slice(0, 10),
+    description: body.description || '',
+    requirements: Array.isArray(body.requirements) ? body.requirements : [],
+    skills: Array.isArray(body.skills) ? body.skills : [],
+    status: JOB_STATUSES.includes(body.status) ? body.status : 'Saved',
+    ...JOB_MATCH_DEFAULTS,
+    ...JOB_APPLICATION_DEFAULTS,
+    applicationDate: '',
+    followUpDate: '',
+    interviewDate: '',
+    introduction: '',
+    applicationDraft: '',
+    notes: body.notes || '',
+    createdAt: now,
+    updatedAt: now,
+  };
+  const jobs = jobsStore.read();
+  jobs.unshift(job);
+  jobsStore.write(jobs);
+  res.status(201).json(job);
+});
+app.patch('/api/jobs/:id', (req, res) => {
+  const jobs = jobsStore.read();
+  const idx = jobs.findIndex(j => j.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  const updates = { ...req.body };
+  if (updates.status && !JOB_STATUSES.includes(updates.status)) return res.status(400).json({ error: 'invalid status' });
+  if (updates.sourceUrl && !/^https?:\/\//i.test(updates.sourceUrl)) return res.status(400).json({ error: 'sourceUrl must be a valid http(s) URL' });
+  if (updates.matchScore !== undefined && updates.matchScore !== null) {
+    const n = Number(updates.matchScore);
+    if (Number.isNaN(n) || n < 0 || n > 100) return res.status(400).json({ error: 'matchScore must be between 0 and 100' });
+    updates.matchScore = Math.round(n);
+  }
+  if (updates.applicationQuestions !== undefined) {
+    if (!Array.isArray(updates.applicationQuestions)) return res.status(400).json({ error: 'applicationQuestions must be an array' });
+    updates.applicationQuestions = updates.applicationQuestions.map(q => ({
+      question: String((q && q.question) || ''),
+      answer: String((q && q.answer) || ''),
+    }));
+  }
+  if (updates.status === 'Applied' && jobs[idx].status !== 'Applied' && !updates.applicationDate && !jobs[idx].applicationDate) {
+    updates.applicationDate = new Date().toISOString().slice(0, 10);
+  }
+  jobs[idx] = withJobMatchDefaults({ ...jobs[idx], ...updates, updatedAt: new Date().toISOString() });
+  jobsStore.write(jobs);
+  res.json(jobs[idx]);
+});
+app.delete('/api/jobs/:id', (req, res) => {
+  const jobs = jobsStore.read();
+  jobsStore.write(jobs.filter(j => j.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+app.get('/api/job-profile', (req, res) => res.json(readJobProfile()));
+app.patch('/api/job-profile', (req, res) => {
+  const profile = readJobProfile();
+  const body = req.body || {};
+  const stringFields = ['fullName', 'professionalTitle', 'summary', 'preferredEmploymentType', 'preferredSalary', 'workPreferences', 'portfolioUrl', 'cvReference'];
+  const arrayFields = ['services', 'skills', 'tools', 'crmCapabilities', 'workHistory', 'languages', 'education', 'preferredRoles'];
+  const updated = { ...profile };
+  stringFields.forEach(f => { if (body[f] !== undefined) updated[f] = String(body[f]); });
+  arrayFields.forEach(f => { if (Array.isArray(body[f])) updated[f] = body[f]; });
+  updated.updatedAt = new Date().toISOString();
+  writeJobProfile(updated);
+  res.json(updated);
+});
+
+/* ---------------- Job Finder (Phase 2F) — discovery layer only.
+   Uses Google's Custom Search JSON API, server-side, to run a site-restricted
+   search of OnlineJobs.ph. No scraping, no login, no browser automation, and
+   no API key ever reaches the frontend — the browser only ever calls these
+   routes. Results are not persisted server-side (they're a live search
+   response); only the user's chosen keywords and search history are saved. ---------------- */
+function normalizeUrlForDedup(url) {
+  if (!url) return '';
+  try {
+    const u = new URL(url);
+    let host = u.hostname.toLowerCase().replace(/^www\./, '');
+    let pathname = u.pathname.replace(/\/+$/, '');
+    return `${host}${pathname}`.toLowerCase();
+  } catch { return String(url).trim().toLowerCase(); }
+}
+function normalizeTitleForDedup(title, source) {
+  return `${(title || '').trim().toLowerCase().replace(/\s+/g, ' ')}|${(source || '').trim().toLowerCase()}`;
+}
+
+app.get('/api/job-finder/keywords', (req, res) => res.json(jobFinderKeywordsStore.read()));
+app.post('/api/job-finder/keywords', (req, res) => {
+  const keyword = ((req.body || {}).keyword || '').trim();
+  if (!keyword) return res.status(400).json({ error: 'keyword is required' });
+  const list = jobFinderKeywordsStore.read();
+  if (list.some(k => k.keyword.toLowerCase() === keyword.toLowerCase())) {
+    return res.status(400).json({ error: 'That keyword has already been added.' });
+  }
+  const entry = { id: crypto.randomUUID(), keyword, createdAt: new Date().toISOString() };
+  list.push(entry);
+  jobFinderKeywordsStore.write(list);
+  res.status(201).json(entry);
+});
+app.delete('/api/job-finder/keywords/:id', (req, res) => {
+  const list = jobFinderKeywordsStore.read();
+  jobFinderKeywordsStore.write(list.filter(k => k.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+app.get('/api/job-finder/history', (req, res) => res.json(jobFinderHistoryStore.read()));
+
+app.get('/api/job-finder/status', (req, res) => res.json({ configured: jobFinderService.isConfigured() }));
+
+app.post('/api/job-finder/search', async (req, res) => {
+  const body = req.body || {};
+  const keywords = Array.isArray(body.keywords) ? [...new Set(body.keywords.map(k => (k || '').trim()).filter(Boolean))] : [];
+  // Never silently changes 10 to another number — only clamps a user-supplied
+  // value down to Google's own 10-per-request ceiling, same as the UI's own limit.
+  const resultsPerKeyword = Math.min(jobFinderService.MAX_RESULTS_PER_KEYWORD, Math.max(1, Number(body.resultsPerKeyword) || jobFinderService.MAX_RESULTS_PER_KEYWORD));
+  if (!keywords.length) return res.status(400).json({ error: 'At least one keyword is required.' });
+  if (!jobFinderService.isConfigured()) {
+    return res.status(503).json({ error: 'not_configured', message: 'Search integration is not configured yet.' });
+  }
+
+  const perKeywordCounts = {};      // valid individual job postings per keyword
+  const perKeywordErrors = {};
+  const combined = [];
+  let rawResultCount = 0;           // every raw item Brave/Google returned, including rejected category/search pages
+  let rejectedCount = 0;            // OnlineJobs.ph pages that were NOT individual job posts
+  let requestsMade = 0;             // actual outbound Brave/Google HTTP requests, including backfill pages
+  try {
+    // One search per keyword, run sequentially. A single keyword may issue
+    // more than one outbound request only to backfill valid job postings
+    // when some raw results were rejected as category/search pages
+    // (jobFinderService caps this internally) — never unbounded, never a
+    // retry of a failed request. A failed keyword records its error and
+    // contributes zero results but never aborts the other keywords.
+    for (const keyword of keywords) {
+      let items = { results: [], rawResultCount: 0, rejectedCount: 0, requestsMade: 0 };
+      try {
+        items = await jobFinderService.searchJobsByKeyword(keyword, resultsPerKeyword);
+      } catch (err) {
+        perKeywordErrors[keyword] = err.message || 'Search failed for this keyword.';
+      }
+      perKeywordCounts[keyword] = items.results.length;
+      rawResultCount += items.rawResultCount;
+      rejectedCount += items.rejectedCount;
+      requestsMade += items.requestsMade;
+      items.results.forEach(item => combined.push({ ...item, keyword }));
+    }
+
+    // Deduplicate: normalized source URL first, normalized title+source as fallback.
+    const seen = new Map();
+    const deduped = [];
+    combined.forEach(item => {
+      const key = item.sourceUrl ? normalizeUrlForDedup(item.sourceUrl) : normalizeTitleForDedup(item.title, item.source);
+      if (seen.has(key)) {
+        const existing = seen.get(key);
+        if (!existing.matchedKeywords.includes(item.keyword)) existing.matchedKeywords.push(item.keyword);
+      } else {
+        const entry = { id: crypto.randomUUID(), ...item, matchedKeywords: [item.keyword] };
+        seen.set(key, entry);
+        deduped.push(entry);
+      }
+    });
+
+    // Mark results that already exist in Job Opportunities (by real sourceUrl match).
+    const existingJobs = jobsStore.read();
+    const existingUrls = new Set(existingJobs.map(j => normalizeUrlForDedup(j.sourceUrl)).filter(Boolean));
+    deduped.forEach(item => { item.alreadySaved = item.sourceUrl ? existingUrls.has(normalizeUrlForDedup(item.sourceUrl)) : false; });
+
+    // One history entry per search click, covering every keyword in it —
+    // never one entry per keyword, so a 3-keyword search is one session record.
+    const historyList = jobFinderHistoryStore.read();
+    historyList.unshift({
+      id: crypto.randomUUID(),
+      keywords,
+      perKeywordCounts,
+      perKeywordErrors,
+      rawResultCount,
+      rejectedCount,
+      requestsMade,
+      uniqueResultCount: deduped.length,
+      searchedAt: new Date().toISOString(),
+    });
+    jobFinderHistoryStore.write(historyList);
+
+    res.json({ results: deduped, perKeywordCounts, perKeywordErrors, rawResultCount, rejectedCount, requestsMade, uniqueResultCount: deduped.length });
+  } catch (err) {
+    res.status(502).json({ error: 'search_failed', message: err.message || 'Search request failed.' });
+  }
 });
 
 app.listen(PORT, () => {

@@ -57,6 +57,15 @@
           <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><path d="M21 3v6h-6"/></svg></span>
           Follow-Ups
         </button>
+        <div class="nav-group-label">Job Hunt</div>
+        <button class="nav-item" data-view="jobfinder">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5"/></svg></span>
+          Job Finder
+        </button>
+        <button class="nav-item" data-view="jobhunt">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg></span>
+          Job Opportunities
+        </button>
 
         <div class="nav-group-label">Client Operations</div>
         <button class="nav-item" data-view="billing">
@@ -273,7 +282,9 @@
             <option>Other</option>
           </select>
         </div>
-        <div class="board" id="board"></div>
+        <div class="board-viewport">
+          <div class="board" id="board"></div>
+        </div>
       </section>
 
       <!-- CONTACTS -->
@@ -333,21 +344,7 @@
           <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
           <div class="fx-cube"></div><div class="fx-particles"></div>
         </div>
-        <div class="two-col">
-          <div class="panel">
-            <div class="calendar-header">
-              <button class="icon-btn" id="calPrev" aria-label="Previous month"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
-              <h3 id="calMonthLabel">Month</h3>
-              <button class="icon-btn" id="calNext" aria-label="Next month"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
-            </div>
-            <div class="calendar-grid" id="calendarGrid"></div>
-          </div>
-          <div class="panel">
-            <h3 style="margin:0 0 4px;font-size:14.5px;">Upcoming</h3>
-            <p class="muted-sub">Everything on your calendar, soonest first.</p>
-            <div id="upcomingList" class="mini-list"></div>
-          </div>
-        </div>
+        <div id="calendarContent"></div>
       </section>
 
       <!-- TASKS -->
@@ -357,23 +354,7 @@
           <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
           <div class="fx-cube"></div><div class="fx-particles"></div>
         </div>
-        <div class="filter-chips" id="taskFilters">
-          <button class="filter-chip active" data-filter="all">All</button>
-          <button class="filter-chip" data-filter="today">Today</button>
-          <button class="filter-chip" data-filter="upcoming">Upcoming</button>
-          <button class="filter-chip" data-filter="overdue">Overdue</button>
-          <button class="filter-chip" data-filter="completed">Completed</button>
-        </div>
-        <div class="panel" style="margin-bottom:16px;">
-          <form id="taskForm" class="task-quick-add">
-            <input id="taskTitle" type="text" placeholder="Task title..." required />
-            <select id="taskContact"><option value="">No client</option></select>
-            <select id="taskPriority"><option>Medium</option><option>High</option><option>Low</option></select>
-            <input id="taskDue" type="date" />
-            <button type="submit" class="btn btn-primary btn-sm">Add</button>
-          </form>
-        </div>
-        <div id="tasksContent"></div>
+        <div id="tasksPageContent"></div>
       </section>
 
       <!-- FOLLOW-UPS -->
@@ -384,6 +365,26 @@
           <div class="fx-cube"></div><div class="fx-particles"></div>
         </div>
         <div id="followupsContent"></div>
+      </section>
+
+      <!-- JOB FINDER -->
+      <section id="jobFinderView" class="view hidden">
+        <div class="view-bg-fx fx-medium" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
+        <div id="jobFinderContent"></div>
+      </section>
+
+      <!-- JOB HUNT -->
+      <section id="jobHuntView" class="view hidden">
+        <div class="view-bg-fx fx-medium" aria-hidden="true">
+          <div class="fx-orb fx-orb-1"></div><div class="fx-orb fx-orb-2"></div><div class="fx-orb fx-orb-3"></div>
+          <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
+          <div class="fx-cube"></div><div class="fx-particles"></div>
+        </div>
+        <div id="jobHuntContent"></div>
       </section>
 
       <!-- BILLING -->
@@ -775,33 +776,137 @@
   </div>
 
   <!-- Kai assistant -->
-  <button class="kai-fab" id="kaiFab">✨ Kai</button>
-  <div class="kai-panel hidden" id="kaiPanel">
+  <button class="kai-fab" id="kaiFab" aria-label="Open Kai, your CRM copilot">
+    <span class="kai-fab-icon">✨ Kai</span>
+    <span class="kai-fab-badge hidden" id="kaiFabBadge"></span>
+  </button>
+  <div class="kai-panel hidden" id="kaiPanel" role="dialog" aria-label="Kai CRM Copilot">
     <div class="kai-panel-header">
-      <button class="modal-close" id="kaiClose" aria-label="Close Kai" style="float:right;color:#fff;">&times;</button>
+      <button class="modal-close kai-close-btn" id="kaiClose" aria-label="Close Kai">&times;</button>
+      <button class="kai-newchat-btn" id="kaiNewChat" aria-label="Start a new chat">New Chat</button>
       <div class="kai-title">✨ Kai</div>
-      <div class="kai-sub">Karen's AI Assistant</div>
+      <div class="kai-sub">Karen's AI CRM Copilot</div>
+      <div class="kai-status"><span class="kai-status-dot"></span><span id="kaiStatusText">Connected to CRM</span></div>
     </div>
-    <div class="kai-panel-body" id="kaiBody">
-      <div class="kai-msg">How can I help?</div>
-      <div class="kai-suggestions">
-        <button class="kai-suggestion">Who needs follow-up?</button>
-        <button class="kai-suggestion">Show today's appointments</button>
-        <button class="kai-suggestion">Which clients have overdue invoices?</button>
-        <button class="kai-suggestion">Which documents need attention?</button>
-        <button class="kai-suggestion">What's my pipeline value?</button>
-        <button class="kai-suggestion">Which clients need attention?</button>
-        <button class="kai-suggestion">Show my tasks for today.</button>
-      </div>
-    </div>
+    <div class="kai-context-chip" id="kaiContextChip"></div>
+    <div class="kai-panel-body" id="kaiBody"></div>
     <div class="kai-panel-footer">
-      <input id="kaiInput" type="text" placeholder="Ask Kai..." />
-      <button class="btn btn-primary btn-sm" id="kaiSend">Send</button>
+      <textarea id="kaiInput" placeholder="Ask Kai about your CRM..." rows="1" aria-label="Ask Kai about your CRM"></textarea>
+      <button class="btn btn-primary btn-sm" id="kaiSend" aria-label="Send message">Send</button>
+    </div>
+  </div>
+
+  <!-- Job Hunt: Add/Edit Job modal (reuses the existing modal/form styling) -->
+  <div class="modal-overlay hidden" id="jobModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="jobModalTitle">Add Job Opportunity</h2>
+        <button class="modal-close" id="jobModalClose" aria-label="Close">&times;</button>
+      </div>
+      <form id="jobForm" style="padding:18px 22px 22px;display:flex;flex-direction:column;gap:12px;">
+        <input type="hidden" id="fJobId" />
+        <div class="form-row">
+          <label class="full">Job Title<input id="fJobTitle" type="text" required /></label>
+        </div>
+        <div class="form-row">
+          <label>Company<input id="fJobCompany" type="text" required /></label>
+          <label>Location<input id="fJobLocation" type="text" placeholder="Remote, city, etc." /></label>
+        </div>
+        <div class="form-row">
+          <label>Source
+            <select id="fJobSource">
+              <option>OnlineJobs.ph</option><option>LinkedIn</option><option>Indeed</option><option>Upwork</option>
+              <option>Referral</option><option>Website</option><option>Direct</option><option>Other</option>
+            </select>
+          </label>
+          <label>Source URL (optional)<input id="fJobSourceUrl" type="url" placeholder="https://..." /></label>
+        </div>
+        <div class="form-row">
+          <label>Employment Type
+            <select id="fJobEmploymentType">
+              <option>Full-Time</option><option>Part-Time</option><option>Contract</option><option>Freelance</option>
+              <option>Temporary</option><option>Other</option>
+            </select>
+          </label>
+          <label>Salary (as shown on posting)<input id="fJobSalary" type="text" placeholder="e.g. $8-12/hr" /></label>
+        </div>
+        <div class="form-row">
+          <label>Salary Min<input id="fJobSalaryMin" type="number" min="0" step="any" placeholder="e.g. 8" /></label>
+          <label>Salary Max<input id="fJobSalaryMax" type="number" min="0" step="any" placeholder="e.g. 12" /></label>
+          <label>Salary Type
+            <select id="fJobSalaryType">
+              <option value="">Not specified</option>
+              <option>Hourly</option><option>Monthly</option><option>Yearly</option><option>Project-Based</option><option>Other</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Posted Date<input id="fJobPostedDate" type="date" /></label>
+          <label>Status
+            <select id="fJobStatus">
+              <option>Saved</option><option>Reviewing</option><option>Ready to Apply</option><option>Applied</option>
+              <option>Follow-Up</option><option>Interview</option><option>Rejected</option><option>Hired</option>
+            </select>
+          </label>
+        </div>
+        <label class="full">Job Description<textarea id="fJobDescription" rows="3" placeholder="Paste the job description..."></textarea></label>
+        <label class="full">Requirements (one per line)<textarea id="fJobRequirements" rows="3"></textarea></label>
+        <label class="full">Skills / Keywords (comma separated)<input id="fJobSkills" type="text" placeholder="e.g. Customer Service, CRM, Appointment Setting" /></label>
+        <label class="full">Notes<textarea id="fJobNotes" rows="2" placeholder="Private notes about this opportunity..."></textarea></label>
+        <div class="modal-actions">
+          <span class="spacer"></span>
+          <button type="button" class="btn btn-ghost" id="jobModalCancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Job</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Job Hunt: Job Profile / CV modal (view + edit) -->
+  <div class="modal-overlay hidden" id="jobProfileModalOverlay">
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-header">
+        <h2>Job Profile</h2>
+        <button class="modal-close" id="jobProfileModalClose" aria-label="Close">&times;</button>
+      </div>
+      <div id="jobProfileModalBody" style="padding:18px 22px 22px;max-height:70vh;overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <!-- Job Profile: Add/Edit a single work experience entry -->
+  <div class="modal-overlay hidden" id="experienceModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="experienceModalTitle">Add Experience</h2>
+        <button class="modal-close" id="experienceModalClose" aria-label="Close">&times;</button>
+      </div>
+      <form id="experienceForm" style="padding:18px 22px 22px;display:flex;flex-direction:column;gap:12px;">
+        <input type="hidden" id="fExpIdx" />
+        <div class="form-row">
+          <label>Company<input id="fExpCompany" type="text" required /></label>
+          <label>Role<input id="fExpRole" type="text" required /></label>
+        </div>
+        <div class="form-row">
+          <label>Type<input id="fExpType" type="text" placeholder="e.g. Remote, Part-Time" /></label>
+          <label>Location<input id="fExpLocation" type="text" placeholder="e.g. Manhattan, NY" /></label>
+        </div>
+        <label class="full">Dates<input id="fExpDates" type="text" placeholder="e.g. Dec 2024 – Jan 2026" /></label>
+        <label class="full">Responsibilities (one per line)<textarea id="fExpResponsibilities" rows="4"></textarea></label>
+        <div class="modal-actions">
+          <span class="spacer"></span>
+          <button type="button" class="btn btn-ghost" id="experienceModalCancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Experience</button>
+        </div>
+      </form>
     </div>
   </div>
 
   <div class="toast-stack" id="toastStack"></div>
 
+  <script src="kai-engine.js"></script>
+  <script src="job-match-engine.js"></script>
+  <script src="employment-compensation-engine.js"></script>
+  <script src="application-prep-engine.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
