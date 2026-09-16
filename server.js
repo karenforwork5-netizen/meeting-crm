@@ -544,6 +544,32 @@ app.delete('/api/job-finder/keywords/:id', (req, res) => {
 
 app.get('/api/job-finder/history', (req, res) => res.json(jobFinderHistoryStore.read()));
 
+// Narrow, one-purpose migration endpoint: imports a single pre-built Job
+// Finder history entry (with its already-discovered `results`) into this
+// environment's history store, exactly as-is. It never calls Brave/Google,
+// never touches jobs.json or the Job Profile, and never re-runs matching —
+// it only appends the given entry once, via the same jobFinderHistoryStore
+// write mechanism the real search route already uses. Not a general-purpose
+// import/data-management endpoint — it exists solely to move an existing,
+// already-verified history entry (with its results) between environments
+// without re-searching.
+app.post('/api/job-finder/history/import', (req, res) => {
+  const entry = req.body || {};
+  const requiredFields = ['id', 'searchedAt', 'keywords', 'perKeywordCounts', 'rawResultCount', 'rejectedCount', 'requestsMade', 'uniqueResultCount', 'results'];
+  const missing = requiredFields.filter((f) => entry[f] === undefined);
+  if (missing.length) return res.status(400).json({ error: 'invalid_entry', message: `Missing required field(s): ${missing.join(', ')}` });
+  if (!Array.isArray(entry.results)) return res.status(400).json({ error: 'invalid_entry', message: 'results must be an array' });
+  if (!Array.isArray(entry.keywords)) return res.status(400).json({ error: 'invalid_entry', message: 'keywords must be an array' });
+
+  const historyList = jobFinderHistoryStore.read();
+  if (historyList.some((h) => h.id === entry.id)) {
+    return res.status(409).json({ error: 'duplicate', message: `A history entry with id "${entry.id}" already exists — not imported again.` });
+  }
+  historyList.unshift(entry);
+  jobFinderHistoryStore.write(historyList);
+  res.status(201).json({ ok: true, imported: { id: entry.id, keywords: entry.keywords, uniqueResultCount: entry.uniqueResultCount, resultsCount: entry.results.length } });
+});
+
 app.get('/api/job-finder/status', (req, res) => res.json({ configured: jobFinderService.isConfigured() }));
 
 app.post('/api/job-finder/search', async (req, res) => {
