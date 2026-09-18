@@ -2505,6 +2505,10 @@ async function saveJobFinderResult(result) {
     status: 'Saved',
     notes: (result.matchedKeywords && result.matchedKeywords.length) ? `Discovered via Job Finder — keyword${result.matchedKeywords.length === 1 ? '' : 's'}: ${result.matchedKeywords.join(', ')}` : 'Discovered via Job Finder',
   };
+  // Returns true/false so callers (e.g. bulk save) can tell whether this
+  // particular result actually saved — standalone callers (the row/detail
+  // panel Save buttons) already ignore the return value, so their existing
+  // behavior (toast + alreadySaved + re-render) is unchanged either way.
   try {
     const created = await createJob(payload);
     // The match was already computed from the same real title/snippet — persist
@@ -2521,16 +2525,34 @@ async function saveJobFinderResult(result) {
     result.alreadySaved = true;
     showToast(`Saved "${result.title}" to Job Opportunities`);
     renderJobFinder();
+    return true;
   } catch (err) {
     showToast(err.message || 'Could not save this job');
+    return false;
   }
 }
 async function saveSelectedJobFinderResults() {
   const toSave = jfResults.filter(r => jfSelectedIds.has(r.id) && !r.alreadySaved);
   if (!toSave.length) { showToast('Nothing selected to save'); return; }
-  for (const r of toSave) await saveJobFinderResult(r);
-  jfSelectedIds = new Set();
-  showToast(`Saved ${toSave.length} job${toSave.length === 1 ? '' : 's'} to Job Opportunities`);
+  const failedIds = new Set();
+  let successCount = 0;
+  for (const r of toSave) {
+    const ok = await saveJobFinderResult(r);
+    if (ok) successCount++;
+    else failedIds.add(r.id);
+  }
+  // Only successful saves leave the selection — a failed save stays selected
+  // so the user can retry it (e.g. via Save Selected again) without having
+  // to re-pick it from the table.
+  jfSelectedIds = failedIds;
+  const failedCount = failedIds.size;
+  if (failedCount === 0) {
+    showToast(`Saved ${successCount} job${successCount === 1 ? '' : 's'}.`);
+  } else if (successCount === 0) {
+    showToast(`No jobs were saved. ${failedCount} failed and remain selected for retry.`);
+  } else {
+    showToast(`Saved ${successCount} job${successCount === 1 ? '' : 's'}. ${failedCount} failed and remain selected for retry.`);
+  }
   renderJobFinder();
 }
 
