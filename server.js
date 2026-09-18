@@ -51,41 +51,13 @@ const JOB_STATUSES = ['Saved', 'Reviewing', 'Ready to Apply', 'Applied', 'Follow
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// A fresh/empty contacts store starts genuinely empty — no fabricated demo
+// contacts are ever auto-inserted. The real CRM has never needed synthetic
+// leads to function; an empty list is the honest starting state.
 function ensureDb() {
   const dir = path.dirname(DB_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, JSON.stringify(seedData(), null, 2));
-}
-
-function seedData() {
-  const now = new Date().toISOString();
-  return [
-    {
-      id: crypto.randomUUID(), name: 'Jordan Reyes', email: 'jordan.reyes@example.com', phone: '+1 415 555 0143',
-      service: 'Appointment Setting', bookingDate: '2026-09-05', bookingTime: '10:00 AM', meetingLink: 'https://meet.google.com/abc-defg-hij',
-      notes: 'Wants a walkthrough of the booking-to-CRM flow.', value: 400, stage: 'new', createdAt: now, lastActivity: now
-    },
-    {
-      id: crypto.randomUUID(), name: 'Priya Nair', email: 'priya.nair@example.com', phone: '+1 212 555 0192',
-      service: 'CRM Management', bookingDate: '2026-09-03', bookingTime: '2:30 PM', meetingLink: 'https://meet.google.com/klm-nopq-rst',
-      notes: 'Second call scheduled after a good first chat.', value: 900, stage: 'confirmed', createdAt: now, lastActivity: now
-    },
-    {
-      id: crypto.randomUUID(), name: 'Marcus Chen', email: 'marcus.chen@example.com', phone: '+1 646 555 0110',
-      service: 'Lead Follow-Up', bookingDate: '2026-08-29', bookingTime: '9:00 AM', meetingLink: 'https://meet.google.com/uvw-xyza-bcd',
-      notes: 'Held the intro call, sending a recap.', value: 650, stage: 'held', createdAt: now, lastActivity: now
-    },
-    {
-      id: crypto.randomUUID(), name: 'Ava Thompson', email: 'ava.thompson@example.com', phone: '+1 305 555 0177',
-      service: 'Customer Support', bookingDate: '2026-08-27', bookingTime: '4:00 PM', meetingLink: 'https://meet.google.com/efg-hijk-lmn',
-      notes: 'Proposal sent, awaiting sign-off.', value: 1200, stage: 'proposal', createdAt: now, lastActivity: now
-    },
-    {
-      id: crypto.randomUUID(), name: 'Liam O’Connor', email: 'liam.oconnor@example.com', phone: '+1 617 555 0166',
-      service: 'CRM Management', bookingDate: '2026-08-20', bookingTime: '11:30 AM', meetingLink: 'https://meet.google.com/opq-rstu-vwx',
-      notes: 'Signed on as a retainer client.', value: 1500, stage: 'client', createdAt: now, lastActivity: now
-    }
-  ];
+  if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, JSON.stringify([], null, 2));
 }
 
 function readContacts() {
