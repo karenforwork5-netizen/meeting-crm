@@ -2412,9 +2412,50 @@ function jfRestoreResultsFromHistoryEntry(entry) {
   jfSelectedIds = new Set();
   jfSelectedResultId = null;
 }
+// 24 hours — the default reuse window; not exposed as a UI setting yet.
+const JF_REUSE_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Order-insensitive, case-insensitive, whitespace-trimmed, duplicate-free
+// keyword-set normalization so two requests for the same keywords in a
+// different order/casing/with a repeat are recognized as identical.
+function jfNormalizeKeywordSet(keywords) {
+  return [...new Set((keywords || []).map(k => (k || '').trim().toLowerCase()).filter(Boolean))].sort();
+}
+function jfKeywordSetsMatch(a, b) {
+  return a.length === b.length && a.every((k, i) => k === b[i]);
+}
+// Looks for the most recent history entry (jfHistory is already newest-first)
+// whose normalized keyword set exactly matches, that still has stored
+// results, and that was searched within the reuse window. Never a partial
+// match, never a different keyword set, never an entry with no results.
+function jfFindReusableHistoryEntry(requestedKeywords) {
+  const target = jfNormalizeKeywordSet(requestedKeywords);
+  if (!target.length) return null;
+  const now = Date.now();
+  for (const entry of jfHistory) {
+    if (!Array.isArray(entry.keywords) || !Array.isArray(entry.results) || !entry.results.length) continue;
+    if (!jfKeywordSetsMatch(jfNormalizeKeywordSet(entry.keywords), target)) continue;
+    const age = now - new Date(entry.searchedAt).getTime();
+    if (!(age >= 0 && age <= JF_REUSE_WINDOW_MS)) continue;
+    return entry;
+  }
+  return null;
+}
 async function runJobFinderSearch() {
   if (!jfKeywords.length) { showToast('Add at least one keyword first'); return; }
   if (jfSearchStatus === 'searching') return; // one search in flight at a time — a stray extra click is a no-op
+
+  // Reuse check happens BEFORE any network call — if a recent identical
+  // search already has stored results, restore them via the existing
+  // restore pipeline instead of hitting /api/job-finder/search (and
+  // therefore Brave/Google) again.
+  const reusable = jfFindReusableHistoryEntry(jfKeywords.map(k => k.keyword));
+  if (reusable) {
+    jfRestoreResultsFromHistoryEntry(reusable);
+    showToast('Reused recent search — no new web search was made.');
+    renderJobFinder();
+    return;
+  }
+
   jfSearchStatus = 'searching';
   jfSearchError = '';
   jfSearchWarning = '';

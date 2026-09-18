@@ -115,6 +115,16 @@ const documentsStore = makeStore(DOCUMENTS_PATH);
 const jobsStore = makeStore(JOBS_PATH);
 const jobFinderKeywordsStore = makeStore(JOB_FINDER_KEYWORDS_PATH);
 const jobFinderHistoryStore = makeStore(JOB_FINDER_HISTORY_PATH);
+// Job Finder history (including each entry's stored results) grows without
+// bound otherwise. Capping at the store's own write path — rather than in
+// each individual route — means every writer (the real search route, the
+// one-time migration import route, anything added later) is capped the same
+// way automatically, with no separate storage mechanism. Newest-first
+// ordering is already how entries are inserted (unshift), so keeping the
+// first N after any write keeps the newest N and drops the oldest.
+const JOB_FINDER_HISTORY_MAX_ENTRIES = 20;
+const _jobFinderHistoryWrite = jobFinderHistoryStore.write.bind(jobFinderHistoryStore);
+jobFinderHistoryStore.write = (items) => _jobFinderHistoryWrite(items.slice(0, JOB_FINDER_HISTORY_MAX_ENTRIES));
 
 // Job Profile / CV — a single record (not a list) used as the source of truth
 // for future job-matching. No fake profile is ever seeded; every field starts
