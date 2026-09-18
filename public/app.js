@@ -267,6 +267,7 @@ function render() {
   if (currentView === 'documents') renderDocuments();
   if (currentView === 'projects') renderProjects();
   if (currentView === 'analytics') renderAnalytics();
+  if (currentView === 'automations') renderAutomations();
   if (typeof kaiUpdateFabBadge === 'function') kaiUpdateFabBadge();
 }
 
@@ -3956,6 +3957,163 @@ function pctChangeLabel(current, previous) {
   return { text: 'No data yet', positive: null };
 }
 
+/* ================= Automation Command Center =================
+   No automation execution engine or event log exists anywhere in this
+   codebase — the only real automation-adjacent capability is the booking
+   webhook (POST /api/webhook/booking) that already creates contacts.
+   Every metric below is computed honestly from what's actually knowable:
+   counts that have a real, verifiable zero (nothing in this system has
+   ever been attributed to an automation) show 0; ratios with no
+   real denominator (a success rate needs recorded attempts) show
+   "No data yet" instead of a fabricated percentage. Nothing here invents
+   automation history, active workflows, or performance data. ================= */
+let autoSelectedTemplateId = '';
+const AUTOMATION_TEMPLATES = [
+  { id: 'new-lead-followup', icon: '🆕', name: 'New Lead Follow-Up', description: 'Follow up automatically when a new lead comes in.',
+    trigger: 'New contact added', condition: 'Does the contact have an upcoming appointment?', action: 'Create a follow-up', result: 'Follow-up created' },
+  { id: 'appointment-reminder', icon: '⏰', name: 'Appointment Reminder', description: 'Remind a contact before their scheduled meeting.',
+    trigger: 'Appointment is booked', condition: 'Is the appointment within the reminder window?', action: 'Send a reminder', result: 'Reminder sent' },
+  { id: 'overdue-followup', icon: '↻', name: 'Overdue Follow-Up', description: 'Flag or nudge a follow-up that has gone past its date.',
+    trigger: 'Follow-up date has passed', condition: 'Has the contact been reached since?', action: 'Create a new follow-up task', result: 'Task created' },
+  { id: 'no-show-recovery', icon: '🌙', name: 'No-Show Recovery', description: 'Re-engage a contact after a missed appointment.',
+    trigger: 'Appointment marked as no-show', condition: 'Has the contact been re-contacted?', action: 'Create a recovery follow-up', result: 'Follow-up created' },
+  { id: 'lead-reactivation', icon: '🌱', name: 'Lead Reactivation', description: 'Re-engage a lead that has gone quiet for a while.',
+    trigger: 'No activity for an extended period', condition: 'Is the lead still in an active stage?', action: 'Create a reactivation follow-up', result: 'Follow-up created' },
+  { id: 'post-meeting-followup', icon: '📞', name: 'Post-Meeting Follow-Up', description: 'Follow up shortly after a meeting takes place.',
+    trigger: 'Appointment marked completed', condition: 'Was next-steps notes left blank?', action: 'Create a follow-up task', result: 'Task created' },
+  { id: 'client-review-request', icon: '⭐', name: 'Client Review Request', description: 'Ask a client for a review after work wraps up.',
+    trigger: 'Contact moved to Client stage', condition: 'Has a review already been requested?', action: 'Create a review-request task', result: 'Task created' },
+];
+function automationsKpis() {
+  // Every one of these is a REAL, verifiable count under the only honest
+  // definition available: nothing in tasks/contacts/invoices carries any
+  // field attributing it to an automation, and no automation entity exists
+  // at all — so counts are genuinely 0, not "unknown".
+  return { active: 0, scheduledToday: 0, tasksGenerated: 0, followupsCreated: 0 };
+}
+function renderAutomations() {
+  const el = $('#automationsContent');
+  const kpis = automationsKpis();
+  const selectedTemplate = AUTOMATION_TEMPLATES.find(t => t.id === autoSelectedTemplateId) || null;
+  el.innerHTML = `
+    <div class="task-action-bar" style="margin-bottom:12px;justify-content:space-between;">
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <span class="muted-sub" style="margin:0;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:800;">Automations</span>
+        <span style="font-size:15px;font-weight:800;color:var(--text);">Automation Command Center</span>
+        <span class="muted-sub" style="margin:0;">Automate the routine, so you can focus on what matters.</span>
+      </div>
+      <button class="btn btn-primary btn-sm" id="autoCreateBtn">+ Create Automation</button>
+    </div>
+
+    <div class="appt-kpi-row" style="grid-template-columns:repeat(5,1fr);">
+      <div class="appt-kpi"><div class="appt-kpi-label">Active Automations</div><div class="appt-kpi-value">${kpis.active}</div><div class="appt-kpi-sub">No automations yet</div></div>
+      <div class="appt-kpi"><div class="appt-kpi-label">Scheduled Today</div><div class="appt-kpi-value">${kpis.scheduledToday}</div><div class="appt-kpi-sub">No data yet</div></div>
+      <div class="appt-kpi"><div class="appt-kpi-label">Tasks Generated</div><div class="appt-kpi-value">${kpis.tasksGenerated}</div><div class="appt-kpi-sub">No data yet</div></div>
+      <div class="appt-kpi"><div class="appt-kpi-label">Follow-Ups Created</div><div class="appt-kpi-value">${kpis.followupsCreated}</div><div class="appt-kpi-sub">No data yet</div></div>
+      <div class="appt-kpi"><div class="appt-kpi-label">Success Rate</div><div class="appt-kpi-value">—</div><div class="appt-kpi-sub">No automation runs yet</div></div>
+    </div>
+
+    <div class="appt-main-grid" style="margin-bottom:12px;">
+      <div class="appt-timeline-col">
+        <div class="panel">
+          <h3 style="margin:0 0 10px;font-size:14.5px;">Active Automations</h3>
+          <div class="table-wrap">
+            <table class="contacts-table task-mgmt-table">
+              <thead>
+                <tr><th>Name</th><th>Trigger</th><th>Action</th><th>Status</th><th>Last Run</th><th>Next Run</th><th>Success</th><th></th></tr>
+              </thead>
+              <tbody><tr><td colspan="8">${emptyStateHtml('No automations yet', 'Create your first automation to start automating repetitive work.')}<div style="text-align:center;margin-top:10px;"><button class="btn btn-primary btn-sm" id="autoCreateBtnInline">+ Create Automation</button></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="appt-side-col">
+        <div class="panel" style="padding:14px 16px;">
+          <h3 style="margin:0 0 6px;font-size:13.5px;">Automation Activity</h3>
+          <p class="muted-sub" style="margin:0;">No automation activity yet. Activity logs will appear here once your automations start running.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:12px;">
+      <h3 style="margin:0 0 4px;font-size:14.5px;">Workflow Preview</h3>
+      <p class="muted-sub" style="margin:0 0 10px;">Select an automation to preview its workflow.</p>
+      <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:700;color:var(--text-muted);max-width:320px;margin-bottom:14px;">Select automation
+        <select class="exec-range-select" id="autoWorkflowSelect">
+          <option value="">No workflow selected</option>
+          ${AUTOMATION_TEMPLATES.map(t => `<option value="${t.id}" ${autoSelectedTemplateId === t.id ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}
+        </select>
+      </label>
+      ${selectedTemplate ? `
+        <p class="muted-sub" style="margin:0 0 12px;color:var(--warning);">Template preview — this is a design pattern, not a live automation.</p>
+        <div class="automation-workflow-preview">
+          <div class="automation-workflow-node"><span class="automation-workflow-tag">Trigger</span><p>${escapeHtml(selectedTemplate.trigger)}</p></div>
+          <div class="automation-workflow-arrow">↓</div>
+          <div class="automation-workflow-node"><span class="automation-workflow-tag">Condition</span><p>${escapeHtml(selectedTemplate.condition)}</p></div>
+          <div class="automation-workflow-arrow">↓</div>
+          <div class="automation-workflow-node"><span class="automation-workflow-tag">Action</span><p>${escapeHtml(selectedTemplate.action)}</p></div>
+          <div class="automation-workflow-arrow">↓</div>
+          <div class="automation-workflow-node"><span class="automation-workflow-tag">Result</span><p>${escapeHtml(selectedTemplate.result)}</p></div>
+        </div>
+      ` : `
+        <div class="automation-workflow-preview automation-workflow-guide">
+          <div class="automation-workflow-node"><span class="automation-workflow-tag">Trigger</span><p>When something happens</p></div>
+          <div class="automation-workflow-arrow">↓</div>
+          <div class="automation-workflow-node"><span class="automation-workflow-tag">Condition</span><p>Check if rules are met</p></div>
+          <div class="automation-workflow-arrow">↓</div>
+          <div class="automation-workflow-node"><span class="automation-workflow-tag">Action</span><p>Do the task automatically</p></div>
+          <div class="automation-workflow-arrow">↓</div>
+          <div class="automation-workflow-node"><span class="automation-workflow-tag">Result</span><p>See the outcome</p></div>
+        </div>
+        <p class="muted-sub" style="margin:12px 0 0;text-align:center;">Select an automation from the dropdown above to view its specific workflow.</p>
+      `}
+    </div>
+
+    <div class="panel" style="margin-bottom:12px;">
+      <h3 style="margin:0 0 4px;font-size:14.5px;">Automation Templates</h3>
+      <p class="muted-sub" style="margin:0 0 12px;">Start with a proven workflow. None are active until you configure one.</p>
+      <div class="automation-grid">
+        ${AUTOMATION_TEMPLATES.map(t => `
+          <div class="automation-card">
+            <div class="automation-card-top"><div class="automation-icon">${t.icon}</div></div>
+            <h4>${escapeHtml(t.name)}</h4>
+            <p>${escapeHtml(t.description)}</p>
+            <div class="automation-footer"><button class="btn btn-ghost btn-sm automation-use-template-btn" data-id="${t.id}">Use Template</button></div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3 style="margin:0 0 4px;font-size:14.5px;">Success Rate &amp; Performance</h3>
+      <p class="muted-sub" style="margin:0 0 14px;">Track how your automations are performing over time.</p>
+      <div class="automation-perf-empty">
+        <p style="margin:0 0 2px;font-weight:800;color:var(--text);font-size:13px;">No automation data yet</p>
+        <p class="muted-sub" style="margin:0;">Run your first automation to see performance analytics here.</p>
+      </div>
+      <div class="appt-kpi-row" style="grid-template-columns:repeat(4,1fr);margin-top:14px;">
+        <div class="appt-kpi"><div class="appt-kpi-label">Successful Runs</div><div class="appt-kpi-value">0</div><div class="appt-kpi-sub">No data yet</div></div>
+        <div class="appt-kpi"><div class="appt-kpi-label">Failed Runs</div><div class="appt-kpi-value">0</div><div class="appt-kpi-sub">No data yet</div></div>
+        <div class="appt-kpi"><div class="appt-kpi-label">Total Runs</div><div class="appt-kpi-value">0</div><div class="appt-kpi-sub">No data yet</div></div>
+        <div class="appt-kpi"><div class="appt-kpi-label">Success Rate</div><div class="appt-kpi-value">—</div><div class="appt-kpi-sub">No automation runs yet</div></div>
+      </div>
+    </div>
+  `;
+  initAutomationsInteractions();
+}
+function initAutomationsInteractions() {
+  const openCreateInfo = () => showToast('Automations run in your workflow platform (n8n, Zapier, or Make) — this CRM doesn\'t have a built-in automation engine yet. Connect one via the booking webhook in Settings.');
+  $('#autoCreateBtn')?.addEventListener('click', openCreateInfo);
+  $('#autoCreateBtnInline')?.addEventListener('click', openCreateInfo);
+  $('#autoWorkflowSelect')?.addEventListener('change', (e) => { autoSelectedTemplateId = e.target.value; renderAutomations(); });
+  $('#automationsContent').querySelectorAll('.automation-use-template-btn').forEach(btn => btn.addEventListener('click', () => {
+    const t = AUTOMATION_TEMPLATES.find(x => x.id === btn.dataset.id);
+    autoSelectedTemplateId = btn.dataset.id;
+    renderAutomations();
+    showToast(`"${t.name}" is a template preview — configure this workflow in n8n, Zapier, or Make to make it real.`);
+  }));
+}
+
 function renderAnalytics() {
   const bounds = anRangeBounds();
   const prevBounds = anPrevBounds(bounds);
@@ -4701,7 +4859,7 @@ const VIEW_META = {
   billing: ['Billing', 'Track invoices and outstanding balances.'],
   documents: ['Documents', 'Centralize client contracts, proposals, and files.'],
   projects: ['Projects', 'Lightweight project tracking, connected to your clients.'],
-  automations: ['Automations', 'How bookings flow into this CRM.'],
+  automations: ['Automations', 'Automate repetitive work across your client operations.'],
   analytics: ['Analytics', 'Understand how your leads, pipeline, and client activity are performing.'],
   settings: ['API / Settings', 'Connect your booking automation to this CRM.'],
 };
@@ -4893,6 +5051,11 @@ function kaiPageContext() {
         { icon: '🆕', label: 'Not saved yet', handler: 'jfNotSaved' },
         { icon: '🔑', label: 'Best keyword', handler: 'jfBestKeyword' },
         { icon: '⭐', label: 'Review first', handler: 'jfReviewFirst' },
+      ] },
+    automations: { label: 'Automations', stat: () => `${automationsKpis().active} Active`,
+      chips: [
+        { icon: '📊', label: 'Automation summary', handler: 'automationsSummary' },
+        { icon: '📡', label: 'Webhook status', handler: 'automationsWebhookStatus' },
       ] },
   };
   return map[currentView] || {
@@ -5263,6 +5426,15 @@ const KAI_HANDLERS = {
     if (!notSaved.length) return { text: "Everything with a real match score has already been saved — nothing new to review." };
     const top = [...notSaved].sort((a, b) => b.matchScore - a.matchScore)[0];
     return { text: `Review this one first:\n\n${top.title}\n${top.matchScore}% ${jobMatchLabel(top.matchScore)}${top.matchConfidence ? ` (confidence: ${top.matchConfidence})` : ''}` };
+  },
+  // Read-only: explains what automation data actually exists (none, beyond
+  // the booking webhook) — never claims a real automation is running.
+  automationsSummary() {
+    const kpis = automationsKpis();
+    return { text: `This CRM doesn't have a built-in automation engine yet, so there's no automation history to report: ${kpis.active} active automations, no scheduled runs, no recorded task/follow-up creation from automations. The one real automation-adjacent capability is the booking webhook, which creates contacts directly from your workflow platform (n8n, Zapier, or Make).` };
+  },
+  automationsWebhookStatus() {
+    return { text: `Real, working endpoint: POST ${window.location.origin}/api/webhook/booking — any booking automation that posts name/email/phone/service/bookingDate/bookingTime/meetingLink/notes/value to this URL will create a real contact here.` };
   },
 };
 

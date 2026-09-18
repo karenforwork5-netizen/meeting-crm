@@ -589,16 +589,50 @@ select option:checked, select option:hover,
 .automation-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
 .automation-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 18px; box-shadow: var(--shadow);
+  padding: 18px; box-shadow: var(--shadow); display: flex; flex-direction: column;
 }
-.automation-card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+.automation-card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
 .automation-icon {
-  width: 36px; height: 36px; border-radius: 10px; background: var(--lavender); color: var(--primary);
-  display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;
+  width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(135deg, var(--lavender), rgba(139,108,255,.28));
+  color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
+  border: 1px solid rgba(139,108,255,.25);
 }
-.automation-card h4 { margin: 10px 0 4px; font-size: 14px; }
-.automation-card p { margin: 0; font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+.automation-card h4 { margin: 0 0 6px; font-size: 14.5px; font-weight: 800; color: var(--text); }
+.automation-card p { margin: 0; font-size: 12.5px; color: var(--text-muted); line-height: 1.55; flex: 1; }
 .automation-card .automation-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--text-muted); }
+.automation-card .automation-footer .btn {
+  width: 100%; justify-content: center; font-weight: 700; transition: border-color .2s ease, box-shadow .2s ease, color .2s ease, background .2s ease;
+}
+.automation-card .automation-footer .btn:hover {
+  border-color: rgba(139,108,255,.55); box-shadow: 0 0 14px rgba(139,108,255,.22); color: var(--d-purple-bright, var(--primary));
+}
+.automation-card { transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
+.automation-card:hover { transform: translateY(-2px); border-color: rgba(139,108,255,.4); box-shadow: 0 12px 30px rgba(0,0,0,.35), 0 0 0 1px rgba(139,108,255,.2); }
+
+/* Automation Command Center — Workflow Preview */
+.automation-workflow-preview { display: flex; flex-direction: column; align-items: center; gap: 0; max-width: 420px; margin: 0 auto; }
+.automation-workflow-node {
+  width: 100%; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px 16px; text-align: center; transition: box-shadow .2s ease, border-color .2s ease;
+}
+.automation-workflow-node:hover { border-color: rgba(139,108,255,.45); box-shadow: 0 0 16px rgba(139,108,255,.18); }
+.automation-workflow-node p { margin: 4px 0 0; font-size: 13px; color: var(--text); }
+.automation-workflow-tag {
+  display: inline-block; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--plum); background: var(--lavender); border-radius: 20px; padding: 2px 10px;
+}
+.automation-workflow-arrow { color: var(--text-dim); font-size: 16px; line-height: 1; margin: 6px 0; }
+.automation-workflow-guide { max-width: 640px; }
+.automation-workflow-guide .automation-workflow-node { opacity: .92; }
+@media (min-width: 860px) {
+  .automation-workflow-guide { flex-direction: row; align-items: stretch; gap: 10px; max-width: 100%; }
+  .automation-workflow-guide .automation-workflow-node { display: flex; flex-direction: column; justify-content: center; }
+  .automation-workflow-guide .automation-workflow-arrow { display: flex; align-items: center; margin: 0; }
+}
+.automation-perf-empty { text-align: center; padding: 8px 0 4px; }
+@media (prefers-reduced-motion: reduce) {
+  .automation-card, .automation-card .automation-footer .btn, .automation-workflow-node { transition: none; }
+}
 
 /* Line chart */
 .chart-toggle { display: flex; gap: 4px; background: var(--lavender); border-radius: 10px; padding: 3px; }

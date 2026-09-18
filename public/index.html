@@ -455,65 +455,7 @@
           <div class="fx-ring fx-ring-1"></div><div class="fx-ring fx-ring-2"></div>
           <div class="fx-cube"></div><div class="fx-particles"></div>
         </div>
-        <div class="automation-connect-strip">
-          <span>● Automations connected</span>
-          <span class="platform-pill">n8n</span>
-          <span class="platform-pill">Zapier</span>
-          <span class="platform-pill">Make</span>
-          <span style="margin-left:auto;color:#266847;opacity:.75;">Last synced: <span id="lastSynced">just now</span></span>
-        </div>
-        <div class="automation-grid">
-          <div class="automation-card">
-            <div class="automation-card-top">
-              <div class="automation-icon">🔁</div>
-              <span class="status-badge" style="background:var(--success-bg);color:var(--success);"><span class="dot" style="background:var(--success);"></span>Active</span>
-            </div>
-            <h4>Lead Follow-Up</h4>
-            <p>Automatically follows up with leads who haven't responded, via your booking workflow's reminder steps.</p>
-            <div class="automation-footer">Managed in n8n · Zapier · Make</div>
-          </div>
-          <div class="automation-card">
-            <div class="automation-card-top">
-              <div class="automation-icon">⏰</div>
-              <span class="status-badge" style="background:var(--success-bg);color:var(--success);"><span class="dot" style="background:var(--success);"></span>Active</span>
-            </div>
-            <h4>Appointment Reminders</h4>
-            <p>Sends a reminder before every booked meeting so nothing gets missed.</p>
-            <div class="automation-footer">Managed in n8n · Zapier · Make</div>
-          </div>
-          <div class="automation-card">
-            <div class="automation-card-top">
-              <div class="automation-icon">📥</div>
-              <span class="status-badge" style="background:var(--success-bg);color:var(--success);"><span class="dot" style="background:var(--success);"></span>Active</span>
-            </div>
-            <h4>New Booking Capture</h4>
-            <p>Every new booking lands here automatically via the webhook below.</p>
-            <div class="automation-footer">Managed in n8n · Zapier · Make</div>
-          </div>
-          <div class="automation-card">
-            <div class="automation-card-top">
-              <div class="automation-icon">💰</div>
-              <span class="status-badge" style="background:var(--warning-bg);color:#946A0C;"><span class="dot" style="background:var(--warning);"></span>Needs attention</span>
-            </div>
-            <h4>Invoice Reminders</h4>
-            <p>Not yet wired up — build this workflow in n8n, Zapier, or Make to remind clients about overdue invoices.</p>
-            <div class="automation-footer">This CRM only displays automation status — automations themselves run in your workflow platform.</div>
-          </div>
-          <div class="automation-card">
-            <div class="automation-card-top">
-              <div class="automation-icon">🌱</div>
-              <span class="status-badge" style="background:var(--warning-bg);color:#946A0C;"><span class="dot" style="background:var(--warning);"></span>Not connected</span>
-            </div>
-            <h4>Lead Reactivation</h4>
-            <p>Re-engages leads that have gone quiet. Not yet wired up — build this workflow in n8n, Zapier, or Make to activate it.</p>
-            <div class="automation-footer">This CRM only displays automation status — automations themselves run in your workflow platform.</div>
-          </div>
-        </div>
-        <div class="section-heading"><h2>Booking webhook</h2></div>
-        <div class="settings-card" style="margin-bottom:0;">
-          <p class="muted" style="margin-bottom:10px;">Every contact in this CRM arrives through this endpoint from your booking automation:</p>
-          <pre id="webhookUrl2">POST /api/webhook/booking</pre>
-        </div>
+        <div id="automationsContent"></div>
       </section>
 
       <!-- ANALYTICS -->
