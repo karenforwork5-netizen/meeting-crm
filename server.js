@@ -660,6 +660,20 @@ app.post('/api/job-finder/search', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Meeting CRM running at http://localhost:${PORT}`);
 });
+
+// Railway (and most container platforms) send SIGTERM to ask the process to
+// stop before replacing/removing the container during a deploy or restart.
+// Without a handler, Node's default behavior is an abrupt kill, which npm's
+// CLI wrapper then logs as "npm error signal SIGTERM" — indistinguishable
+// in the logs from a real crash. Closing the server first lets any in-flight
+// request finish before exiting cleanly with code 0.
+function shutdown(signal) {
+  console.log(`${signal} received, shutting down gracefully...`);
+  if (!server.listening) { process.exit(0); return; }
+  server.close(() => process.exit(0));
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
