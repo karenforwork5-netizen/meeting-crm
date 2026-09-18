@@ -2560,7 +2560,7 @@ async function saveJobFinderResult(result) {
         matchScore: result.matchScore, matchStatus: result.matchStatus, matchConfidence: result.matchConfidence,
         matchingSkills: result.matchingSkills, partialSkills: result.partialSkills, missingSkills: result.missingSkills,
         matchedRequirements: result.matchedRequirements, partialRequirements: result.partialRequirements, missingRequirements: result.missingRequirements,
-        matchExplanation: result.matchExplanation, analyzedAt: result.analyzedAt,
+        matchExplanation: result.matchExplanation, analyzedAt: result.analyzedAt, profileMatchSignature: result.profileMatchSignature,
       });
     }
     result.alreadySaved = true;
@@ -2906,9 +2906,19 @@ function jobProfileUsableForMatching() {
     || (p.tools && p.tools.length) || (p.crmCapabilities && p.crmCapabilities.length)
     || (p.workHistory && p.workHistory.length));
 }
+// Content-aware, not timestamp-based: compares the Job Profile content
+// signature captured at analysis time (job.profileMatchSignature) against
+// the CURRENT profile's signature (job-match-engine.js's
+// profileMatchSignature — only the fields the matching engine actually
+// reads). Re-saving the Job Profile with unchanged relevant content no
+// longer flags every job stale, since the signature doesn't change. A job
+// analyzed before this fix shipped has no stored signature yet — treated as
+// "cannot determine staleness" (not stale) rather than fabricating one, so
+// existing correct analyses keep displaying until the job is re-analyzed
+// once under the new system.
 function isJobMatchStale(job) {
-  return job.matchStatus === 'Analyzed' && job.analyzedAt && jobProfile.updatedAt
-    && new Date(job.analyzedAt) < new Date(jobProfile.updatedAt);
+  if (job.matchStatus !== 'Analyzed' || !job.profileMatchSignature) return false;
+  return job.profileMatchSignature !== profileMatchSignature(jobProfile);
 }
 async function analyzeJob(job) {
   const result = calculateJobMatch(job, jobProfile);

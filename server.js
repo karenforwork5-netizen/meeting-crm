@@ -402,6 +402,7 @@ const JOB_MATCH_DEFAULTS = {
   matchingSkills: [], partialSkills: [], missingSkills: [],
   matchedRequirements: [], partialRequirements: [], missingRequirements: [],
   matchExplanation: '', matchStatus: 'Not analyzed', analyzedAt: null,
+  profileMatchSignature: null,
 };
 // Phase 2D application-preparation fields. applicationQuestions changed shape
 // from a free-text string to a structured [{question, answer}] list — safe

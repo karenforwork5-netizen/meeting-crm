@@ -231,6 +231,35 @@
       || (profile.workHistory && profile.workHistory.length));
   }
 
+  // Only these fields ever feed the matching engine (see profileTermPool,
+  // profileExperienceTokens, profileHasUsableData, toolAwarePartialNote
+  // above) — fullName, languages, education, preferred*, portfolioUrl,
+  // cvReference, and updatedAt are deliberately excluded, so changing any
+  // of those never affects the signature.
+  const PROFILE_MATCH_FIELDS = ['professionalTitle', 'summary', 'services', 'skills', 'tools', 'crmCapabilities', 'workHistory'];
+  // Recursively sorts object keys before serializing so two objects with the
+  // same content but different key insertion order produce an identical
+  // string; array order is preserved (a reordered list is real content).
+  function stableStringify(value) {
+    if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
+    if (value && typeof value === 'object') {
+      return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + stableStringify(value[k])).join(',') + '}';
+    }
+    return JSON.stringify(value === undefined ? null : value);
+  }
+  // A deterministic content signature of only the Job Profile fields the
+  // matching engine actually uses. Same relevant content -> same signature;
+  // any change to a relevant field -> a different signature; everything
+  // else (metadata, timestamps, unrelated fields) never affects it.
+  function profileMatchSignature(profile) {
+    const relevant = {};
+    PROFILE_MATCH_FIELDS.forEach((f) => {
+      const v = profile && profile[f];
+      relevant[f] = v !== undefined ? v : (f === 'professionalTitle' || f === 'summary' ? '' : []);
+    });
+    return stableStringify(relevant);
+  }
+
   function matchCategory(score) {
     if (score === null || score === undefined) return null;
     if (score >= 90) return 'Strong Match';
@@ -262,13 +291,18 @@
    * as a zero (which would be inventing a negative signal). */
   function calculateJobMatch(job, profile) {
     const analyzedAt = new Date().toISOString();
+    // Captured once per call so every return branch (including the "Not
+    // enough data" ones) records what the profile looked like at analysis
+    // time — isJobMatchStale() compares this against the CURRENT profile's
+    // signature instead of comparing raw timestamps.
+    const signature = profileMatchSignature(profile);
     if (!profileHasUsableData(profile)) {
       return {
         matchScore: null, matchStatus: 'Not enough data', matchConfidence: null,
         matchingSkills: [], partialSkills: [], missingSkills: [],
         matchedRequirements: [], partialRequirements: [], missingRequirements: [],
         matchExplanation: 'Your Job Profile does not have enough information yet (services, skills, tools, or work experience) to compare against this job.',
-        analyzedAt,
+        analyzedAt, profileMatchSignature: signature,
       };
     }
     const pool = profileTermPool(profile);
@@ -278,7 +312,7 @@
         matchingSkills: [], partialSkills: [], missingSkills: [],
         matchedRequirements: [], partialRequirements: [], missingRequirements: [],
         matchExplanation: 'This job has no listed skills, requirements, or description, and its title does not indicate enough about the role to compare against your Job Profile.',
-        analyzedAt,
+        analyzedAt, profileMatchSignature: signature,
       };
     }
 
@@ -340,7 +374,7 @@
         matchingSkills: [], partialSkills: [], missingSkills: [],
         matchedRequirements: [], partialRequirements: [], missingRequirements: [],
         matchExplanation: 'Not enough overlapping information between this job and your Job Profile to calculate a reliable match.',
-        analyzedAt,
+        analyzedAt, profileMatchSignature: signature,
       };
     }
     const totalWeight = categories.reduce((s, c) => s + c.weight, 0);
@@ -381,9 +415,9 @@
       partialRequirements: reqResult.partial.map(text => ({ text, note: toolAwarePartialNote(text, profile.tools) })),
       missingRequirements: missingRequirementsWithNotes,
       matchExplanation: explanationParts.join(' '),
-      analyzedAt,
+      analyzedAt, profileMatchSignature: signature,
     };
   }
 
-  return { calculateJobMatch, matchCategory, recommendationFor, classifyPhrase, canonicalPhrase, tokenize, KNOWN_TOOLS, titleCapabilityHints, jobHasUsableData, computeMatchConfidence };
+  return { calculateJobMatch, matchCategory, recommendationFor, classifyPhrase, canonicalPhrase, tokenize, KNOWN_TOOLS, titleCapabilityHints, jobHasUsableData, computeMatchConfidence, profileMatchSignature };
 });
