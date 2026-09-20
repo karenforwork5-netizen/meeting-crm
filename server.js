@@ -34,6 +34,8 @@ const JOBS_PATH = path.join(__dirname, 'data', 'jobs.json');
 const JOB_PROFILE_PATH = path.join(__dirname, 'data', 'jobProfile.json');
 const JOB_FINDER_KEYWORDS_PATH = path.join(__dirname, 'data', 'jobFinderKeywords.json');
 const JOB_FINDER_HISTORY_PATH = path.join(__dirname, 'data', 'jobFinderHistory.json');
+const AUTOMATIONS_PATH = path.join(__dirname, 'data', 'automations.json');
+const AUTOMATION_RUNS_PATH = path.join(__dirname, 'data', 'automationRuns.json');
 const UPLOADS_DIR = path.join(__dirname, 'data', 'uploads');
 const STAGES = ['new', 'confirmed', 'held', 'proposal', 'client', 'lost'];
 const TASK_PRIORITIES = ['High', 'Medium', 'Low'];
@@ -47,6 +49,14 @@ const BILLING_TYPES = ['Not Set', 'Hourly', 'Fixed Project', 'Retainer', 'Commis
 const JOB_SOURCES = ['OnlineJobs.ph', 'LinkedIn', 'Indeed', 'Upwork', 'Referral', 'Website', 'Direct', 'Other'];
 const JOB_EMPLOYMENT_TYPES = ['Full-Time', 'Part-Time', 'Contract', 'Freelance', 'Temporary', 'Other'];
 const JOB_STATUSES = ['Saved', 'Reviewing', 'Ready to Apply', 'Applied', 'Follow-Up', 'Interview', 'Rejected', 'Hired'];
+const CREATED_BY_VALUES = ['manual', 'api', 'import', 'integration', 'automation'];
+const AUTOMATION_STATUSES = ['active', 'paused'];
+const AUTOMATION_RUN_STATUSES = ['running', 'success', 'failed', 'skipped'];
+// The only automation type with real execution logic behind it right now.
+// An automation record with any other/missing `type` can be saved (as a
+// template/config) but will honestly fail — never silently no-op — if
+// something ever tries to execute it.
+const AUTOMATION_TYPES = ['new_lead_followup'];
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -87,6 +97,8 @@ const documentsStore = makeStore(DOCUMENTS_PATH);
 const jobsStore = makeStore(JOBS_PATH);
 const jobFinderKeywordsStore = makeStore(JOB_FINDER_KEYWORDS_PATH);
 const jobFinderHistoryStore = makeStore(JOB_FINDER_HISTORY_PATH);
+const automationsStore = makeStore(AUTOMATIONS_PATH);
+const automationRunsStore = makeStore(AUTOMATION_RUNS_PATH);
 // Job Finder history (including each entry's stored results) grows without
 // bound otherwise. Capping at the store's own write path — rather than in
 // each individual route — means every writer (the real search route, the
@@ -168,6 +180,11 @@ app.post('/api/contacts', (req, res) => {
     nextFollowUp: body.nextFollowUp || '',
     lastContactedAt: body.lastContactedAt || '',
     healthOverride: body.healthOverride || '',
+    // Distinct from `sourceType` (which describes how the LEAD was sourced,
+    // e.g. LinkedIn/referral) — this records who/what created the CRM RECORD.
+    // Existing records predate this field and are left as-is (no field at
+    // all), never backfilled with a guessed value.
+    createdBy: CREATED_BY_VALUES.includes(body.createdBy) ? body.createdBy : 'manual',
     createdAt: now,
     lastActivity: now
   };
@@ -193,6 +210,7 @@ app.post('/api/webhook/booking', (req, res) => {
     notes: body.notes || body.Notes || '',
     value: Number(body.value) || 0,
     stage: 'new',
+    createdBy: 'integration',
     createdAt: now,
     lastActivity: now
   };
@@ -641,6 +659,184 @@ app.post('/api/job-finder/search', async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: 'search_failed', message: err.message || 'Search request failed.' });
   }
+});
+
+/* ---------------- Automations (foundation + "New Lead Follow-Up") ----------------
+ * CRM is the source of truth for automation definitions/state; execution is
+ * triggered externally (by n8n or a manual test call) via POST
+ * /api/automations/execute. No automation ever runs on a timer/poll inside
+ * this process — there is no scheduler here, by design (see audit notes).
+ *
+ * Concurrency note: every handler below is fully synchronous (plain
+ * fs.readFileSync/writeFileSync, no `await` in between a read and its
+ * matching write). Node runs one request handler to completion before
+ * starting the next, so a synchronous read-modify-write cannot be
+ * interleaved by a second concurrent request — this is the same guarantee
+ * every existing route in this file already relies on. That is sufficient
+ * protection for this single-process JSON-file architecture without adding
+ * file locks or a queue.
+ */
+app.get('/api/automations', (req, res) => res.json(automationsStore.read()));
+
+app.post('/api/automations', (req, res) => {
+  const body = req.body || {};
+  if (!body.name) return res.status(400).json({ error: 'name is required' });
+  if (body.type && !AUTOMATION_TYPES.includes(body.type)) {
+    return res.status(400).json({ error: `type must be one of: ${AUTOMATION_TYPES.join(', ')}` });
+  }
+  const now = new Date().toISOString();
+  const automation = {
+    id: crypto.randomUUID(),
+    name: body.name,
+    description: body.description || '',
+    trigger: body.trigger || '',
+    condition: body.condition || '',
+    action: body.action || '',
+    type: body.type || '',
+    // Saved automations start paused by default unless the caller explicitly
+    // asks for 'active' — a new automation should never silently start
+    // executing against real contacts the moment it's created.
+    status: body.status === 'active' ? 'active' : 'paused',
+    createTask: !!body.createTask,
+    createdAt: now,
+    updatedAt: now,
+    lastRunAt: '',
+    nextRunAt: '',
+  };
+  const automations = automationsStore.read();
+  automations.unshift(automation);
+  automationsStore.write(automations);
+  res.status(201).json(automation);
+});
+
+app.patch('/api/automations/:id', (req, res) => {
+  const automations = automationsStore.read();
+  const idx = automations.findIndex(a => a.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  const updates = { ...req.body };
+  if (updates.status && !AUTOMATION_STATUSES.includes(updates.status)) {
+    return res.status(400).json({ error: `status must be one of: ${AUTOMATION_STATUSES.join(', ')}` });
+  }
+  if (updates.type && !AUTOMATION_TYPES.includes(updates.type)) {
+    return res.status(400).json({ error: `type must be one of: ${AUTOMATION_TYPES.join(', ')}` });
+  }
+  automations[idx] = { ...automations[idx], ...updates, updatedAt: new Date().toISOString() };
+  automationsStore.write(automations);
+  res.json(automations[idx]);
+});
+
+app.get('/api/automation-runs', (req, res) => {
+  const runs = automationRunsStore.read();
+  const { automationId } = req.query;
+  res.json(automationId ? runs.filter(r => r.automationId === automationId) : runs);
+});
+
+// Dedicated execution/reporting endpoint for n8n. This is the ONLY way an
+// external system can cause an automation-driven CRM mutation — it performs
+// exactly one approved, hardcoded action per known automation `type`; it is
+// not a generic write API.
+app.post('/api/automations/execute', (req, res) => {
+  const providedKey = req.get('X-Automation-Key');
+  if (!process.env.AUTOMATION_API_KEY || providedKey !== process.env.AUTOMATION_API_KEY) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  const body = req.body || {};
+  const { automationId, contactId, triggerEventId } = body;
+  if (!automationId || !triggerEventId) {
+    return res.status(400).json({ error: 'automationId and triggerEventId are required' });
+  }
+
+  const automations = automationsStore.read();
+  const automationIdx = automations.findIndex(a => a.id === automationId);
+  if (automationIdx === -1) return res.status(404).json({ error: 'automation not found' });
+  const automation = automations[automationIdx];
+
+  const startedAt = new Date().toISOString();
+  function recordRun(status, error, resultSummary) {
+    const run = {
+      id: crypto.randomUUID(), automationId, contactId: contactId || '', triggerEventId,
+      startedAt, finishedAt: new Date().toISOString(), status, error: error || '', resultSummary: resultSummary || '',
+    };
+    const runs = automationRunsStore.read();
+    runs.unshift(run);
+    automationRunsStore.write(runs);
+    return run;
+  }
+
+  // Idempotency: the same (automationId, contactId, triggerEventId) combo
+  // must never execute twice, no matter how many times n8n retries/redelivers it.
+  const existingRun = automationRunsStore.read().find(r =>
+    r.automationId === automationId && r.contactId === (contactId || '') && r.triggerEventId === triggerEventId);
+  if (existingRun) {
+    return res.status(200).json({ status: 'skipped', reason: 'duplicate triggerEventId — already processed', run: existingRun });
+  }
+
+  if (automation.status !== 'active') {
+    const run = recordRun('skipped', '', 'Automation is paused');
+    return res.status(200).json({ status: 'skipped', reason: 'automation is paused', run });
+  }
+
+  if (automation.type !== 'new_lead_followup') {
+    const run = recordRun('failed', 'no execution handler for this automation type', '');
+    return res.status(400).json({ status: 'failed', error: 'no execution handler for this automation type', run });
+  }
+
+  if (!contactId) {
+    const run = recordRun('failed', 'contactId is required for this automation type', '');
+    return res.status(400).json({ status: 'failed', error: 'contactId is required for this automation type', run });
+  }
+
+  const contacts = readContacts();
+  const contactIdx = contacts.findIndex(c => c.id === contactId);
+  if (contactIdx === -1) {
+    const run = recordRun('failed', 'contact not found', '');
+    return res.status(404).json({ status: 'failed', error: 'contact not found', run });
+  }
+  const contact = contacts[contactIdx];
+
+  // Eligibility — ONLY real, existing contact fields. No invented lead-scoring.
+  const hasContactInfo = !!(contact.email || contact.phone);
+  const isNewLead = contact.sourceStatus === 'New';
+  if (!hasContactInfo || !isNewLead) {
+    const run = recordRun('skipped', '', 'Contact is not eligible (requires an email or phone, and sourceStatus === "New")');
+    return res.status(200).json({ status: 'skipped', reason: 'contact not eligible', run });
+  }
+
+  // Duplicate-follow-up protection: never overwrite an already-scheduled future follow-up.
+  const today = new Date().toISOString().slice(0, 10);
+  if (contact.nextFollowUp && contact.nextFollowUp >= today) {
+    const run = recordRun('skipped', '', `Contact already has an upcoming follow-up on ${contact.nextFollowUp}`);
+    return res.status(200).json({ status: 'skipped', reason: 'contact already has an upcoming follow-up', run });
+  }
+
+  const followUpDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  contacts[contactIdx] = { ...contact, nextFollowUp: followUpDate, lastActivity: new Date().toISOString() };
+  writeContacts(contacts);
+
+  let createdTask = null;
+  if (automation.createTask) {
+    const tasks = tasksStore.read();
+    const alreadyOpen = tasks.some(t => t.contactId === contactId && t.automationId === automationId && t.status === 'open');
+    if (!alreadyOpen) {
+      createdTask = {
+        id: crypto.randomUUID(), title: `Follow up with ${contact.name}`, contactId, projectId: '',
+        dueDate: followUpDate, priority: 'Medium', status: 'open', createdAt: new Date().toISOString(), completedAt: '',
+        automationId, createdBy: 'automation',
+      };
+      tasks.unshift(createdTask);
+      tasksStore.write(tasks);
+    }
+  }
+
+  automations[automationIdx] = { ...automation, lastRunAt: new Date().toISOString() };
+  automationsStore.write(automations);
+
+  const summary = [`Set nextFollowUp to ${followUpDate}`];
+  if (automation.createTask) summary.push(createdTask ? 'created a follow-up task' : 'follow-up task already existed, skipped duplicate');
+  const run = recordRun('success', '', summary.join('; '));
+
+  res.status(200).json({ status: 'success', run, contact: contacts[contactIdx], task: createdTask });
 });
 
 const server = app.listen(PORT, () => {

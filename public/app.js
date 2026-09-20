@@ -17,6 +17,8 @@ const OVERDUE_DAYS = 3;
 
 let contacts = [];
 let tasks = [];
+let automations = [];
+let automationRuns = [];
 let invoices = [];
 let projects = [];
 let documents = [];
@@ -111,6 +113,8 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 
 async function loadContacts() { contacts = await (await fetch('/api/contacts')).json(); render(); }
 async function loadTasks() { tasks = await (await fetch('/api/tasks')).json(); if (['tasks', 'dashboard', 'calendar'].includes(currentView)) render(); }
+async function loadAutomations() { automations = await (await fetch('/api/automations')).json(); if (currentView === 'automations') render(); }
+async function loadAutomationRuns() { automationRuns = await (await fetch('/api/automation-runs')).json(); if (currentView === 'automations') render(); }
 async function loadInvoices() { invoices = await (await fetch('/api/invoices')).json(); if (['billing', 'dashboard', 'calendar'].includes(currentView)) render(); }
 async function loadProjects() { projects = await (await fetch('/api/projects')).json(); if (currentView === 'projects') render(); }
 async function loadDocuments() { documents = await (await fetch('/api/documents')).json(); if (currentView === 'documents') render(); }
@@ -3958,16 +3962,29 @@ function pctChangeLabel(current, previous) {
 }
 
 /* ================= Automation Command Center =================
-   No automation execution engine or event log exists anywhere in this
-   codebase — the only real automation-adjacent capability is the booking
-   webhook (POST /api/webhook/booking) that already creates contacts.
-   Every metric below is computed honestly from what's actually knowable:
-   counts that have a real, verifiable zero (nothing in this system has
-   ever been attributed to an automation) show 0; ratios with no
-   real denominator (a success rate needs recorded attempts) show
-   "No data yet" instead of a fabricated percentage. Nothing here invents
-   automation history, active workflows, or performance data. ================= */
+   Backed by a real automation engine now (server.js: /api/automations,
+   /api/automation-runs, /api/automations/execute) — but only ONE automation
+   type has real execution logic behind it: 'new_lead_followup'. The 7 cards
+   in AUTOMATION_TEMPLATES below remain design-concept previews (their
+   trigger/condition/action text is illustrative, not necessarily identical
+   to any real handler); NEW_LEAD_FOLLOWUP_REAL is the one template that maps
+   to an actual backend implementation, so its config form uses the true
+   trigger/condition/action text the server actually executes, not the
+   template's preview copy. Every KPI/table/activity value below is computed
+   from real `automations`/`automationRuns`/`tasks` data — nothing here
+   invents history, active workflows, or performance data. ================= */
 let autoSelectedTemplateId = '';
+let autoCreateFormOpen = false;
+let autoCreateFormCreateTask = true;
+let autoCreateFormActivateNow = false;
+const NEW_LEAD_FOLLOWUP_REAL = {
+  type: 'new_lead_followup',
+  name: 'New Lead Follow-Up',
+  description: 'Automatically schedule a follow-up for new, reachable leads.',
+  trigger: 'New contact created',
+  condition: 'Contact has an email or phone number, and sourceStatus is "New"',
+  action: 'Set nextFollowUp 2 days out (optionally also create a follow-up task)',
+};
 const AUTOMATION_TEMPLATES = [
   { id: 'new-lead-followup', icon: '🆕', name: 'New Lead Follow-Up', description: 'Follow up automatically when a new lead comes in.',
     trigger: 'New contact added', condition: 'Does the contact have an upcoming appointment?', action: 'Create a follow-up', result: 'Follow-up created' },
@@ -3984,17 +4001,41 @@ const AUTOMATION_TEMPLATES = [
   { id: 'client-review-request', icon: '⭐', name: 'Client Review Request', description: 'Ask a client for a review after work wraps up.',
     trigger: 'Contact moved to Client stage', condition: 'Has a review already been requested?', action: 'Create a review-request task', result: 'Task created' },
 ];
+function fmtDateTimeShort(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+function automationSuccessRate(automationId) {
+  const runs = automationId ? automationRuns.filter(r => r.automationId === automationId) : automationRuns;
+  const success = runs.filter(r => r.status === 'success').length;
+  const failed = runs.filter(r => r.status === 'failed').length;
+  const attempted = success + failed;
+  return attempted ? Math.round((success / attempted) * 100) : null;
+}
 function automationsKpis() {
-  // Every one of these is a REAL, verifiable count under the only honest
-  // definition available: nothing in tasks/contacts/invoices carries any
-  // field attributing it to an automation, and no automation entity exists
-  // at all — so counts are genuinely 0, not "unknown".
-  return { active: 0, scheduledToday: 0, tasksGenerated: 0, followupsCreated: 0 };
+  // Every value here is computed from the real automations/automationRuns/tasks
+  // arrays loaded from the backend — nothing is hardcoded or fabricated.
+  const active = automations.filter(a => a.status === 'active').length;
+  const scheduledToday = automations.filter(a => a.nextRunAt === todayStr()).length;
+  const tasksGenerated = tasks.filter(t => t.createdBy === 'automation').length;
+  const followupsCreated = automationRuns.filter(r => r.status === 'success').length;
+  return { active, scheduledToday, tasksGenerated, followupsCreated, successRate: automationSuccessRate(null) };
 }
 function renderAutomations() {
   const el = $('#automationsContent');
   const kpis = automationsKpis();
   const selectedTemplate = AUTOMATION_TEMPLATES.find(t => t.id === autoSelectedTemplateId) || null;
+  const hasAutomations = automations.length > 0;
+  const recentRuns = [...automationRuns].sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || '')).slice(0, 8);
+  const perf = {
+    success: automationRuns.filter(r => r.status === 'success').length,
+    failed: automationRuns.filter(r => r.status === 'failed').length,
+    total: automationRuns.length,
+    rate: automationSuccessRate(null),
+  };
+
   el.innerHTML = `
     <div class="task-action-bar" style="margin-bottom:12px;justify-content:space-between;">
       <div style="display:flex;flex-direction:column;gap:2px;">
@@ -4006,11 +4047,11 @@ function renderAutomations() {
     </div>
 
     <div class="appt-kpi-row" style="grid-template-columns:repeat(5,1fr);">
-      <div class="appt-kpi"><div class="appt-kpi-label">Active Automations</div><div class="appt-kpi-value">${kpis.active}</div><div class="appt-kpi-sub">No automations yet</div></div>
+      <div class="appt-kpi"><div class="appt-kpi-label">Active Automations</div><div class="appt-kpi-value">${kpis.active}</div><div class="appt-kpi-sub">${kpis.active ? 'Currently running' : 'No automations yet'}</div></div>
       <div class="appt-kpi"><div class="appt-kpi-label">Scheduled Today</div><div class="appt-kpi-value">${kpis.scheduledToday}</div><div class="appt-kpi-sub">No data yet</div></div>
-      <div class="appt-kpi"><div class="appt-kpi-label">Tasks Generated</div><div class="appt-kpi-value">${kpis.tasksGenerated}</div><div class="appt-kpi-sub">No data yet</div></div>
-      <div class="appt-kpi"><div class="appt-kpi-label">Follow-Ups Created</div><div class="appt-kpi-value">${kpis.followupsCreated}</div><div class="appt-kpi-sub">No data yet</div></div>
-      <div class="appt-kpi"><div class="appt-kpi-label">Success Rate</div><div class="appt-kpi-value">—</div><div class="appt-kpi-sub">No automation runs yet</div></div>
+      <div class="appt-kpi"><div class="appt-kpi-label">Tasks Generated</div><div class="appt-kpi-value">${kpis.tasksGenerated}</div><div class="appt-kpi-sub">${kpis.tasksGenerated ? 'By automation' : 'No data yet'}</div></div>
+      <div class="appt-kpi"><div class="appt-kpi-label">Follow-Ups Created</div><div class="appt-kpi-value">${kpis.followupsCreated}</div><div class="appt-kpi-sub">${kpis.followupsCreated ? 'By automation' : 'No data yet'}</div></div>
+      <div class="appt-kpi"><div class="appt-kpi-label">Success Rate</div><div class="appt-kpi-value">${kpis.successRate === null ? '—' : kpis.successRate + '%'}</div><div class="appt-kpi-sub">${kpis.successRate === null ? 'No automation runs yet' : 'Of completed runs'}</div></div>
     </div>
 
     <div class="appt-main-grid" style="margin-bottom:12px;">
@@ -4022,7 +4063,22 @@ function renderAutomations() {
               <thead>
                 <tr><th>Name</th><th>Trigger</th><th>Action</th><th>Status</th><th>Last Run</th><th>Next Run</th><th>Success</th><th></th></tr>
               </thead>
-              <tbody><tr><td colspan="8">${emptyStateHtml('No automations yet', 'Create your first automation to start automating repetitive work.')}<div style="text-align:center;margin-top:10px;"><button class="btn btn-primary btn-sm" id="autoCreateBtnInline">+ Create Automation</button></div></td></tr></tbody>
+              <tbody>
+                ${!hasAutomations ? `<tr><td colspan="8">${emptyStateHtml('No automations yet', 'Create your first automation to start automating repetitive work.')}<div style="text-align:center;margin-top:10px;"><button class="btn btn-primary btn-sm" id="autoCreateBtnInline">+ Create Automation</button></div></td></tr>` :
+                  automations.map(a => {
+                    const rate = automationSuccessRate(a.id);
+                    return `<tr>
+                      <td>${escapeHtml(a.name)}</td>
+                      <td>${escapeHtml(a.trigger || '—')}</td>
+                      <td>${escapeHtml(a.action || '—')}</td>
+                      <td><span class="status-badge" style="background:${a.status === 'active' ? 'rgba(67,211,158,.16)' : 'rgba(116,113,143,.16)'};color:${a.status === 'active' ? 'var(--success)' : 'var(--text-muted)'}">${a.status === 'active' ? 'Active' : 'Paused'}</span></td>
+                      <td>${fmtDateTimeShort(a.lastRunAt)}</td>
+                      <td>${fmtDateTimeShort(a.nextRunAt)}</td>
+                      <td>${rate === null ? '—' : rate + '%'}</td>
+                      <td><button class="btn btn-ghost btn-sm automation-toggle-btn" data-id="${a.id}" data-next="${a.status === 'active' ? 'paused' : 'active'}">${a.status === 'active' ? 'Pause' : 'Activate'}</button></td>
+                    </tr>`;
+                  }).join('')}
+              </tbody>
             </table>
           </div>
         </div>
@@ -4030,10 +4086,52 @@ function renderAutomations() {
       <div class="appt-side-col">
         <div class="panel" style="padding:14px 16px;">
           <h3 style="margin:0 0 6px;font-size:13.5px;">Automation Activity</h3>
-          <p class="muted-sub" style="margin:0;">No automation activity yet. Activity logs will appear here once your automations start running.</p>
+          ${!recentRuns.length ? `<p class="muted-sub" style="margin:0;">No automation activity yet. Activity logs will appear here once your automations start running.</p>` :
+            `<div class="automation-activity-list">
+              ${recentRuns.map(r => {
+                const a = automations.find(x => x.id === r.automationId);
+                const statusColor = r.status === 'success' ? 'var(--success)' : r.status === 'failed' ? 'var(--danger, var(--error))' : 'var(--text-muted)';
+                return `<div class="automation-activity-item">
+                  <span class="automation-activity-dot" style="background:${statusColor}"></span>
+                  <div>
+                    <p style="margin:0;font-size:12.5px;color:var(--text);font-weight:700;">${escapeHtml(a ? a.name : 'Automation')} — ${r.status}</p>
+                    <p class="muted-sub" style="margin:2px 0 0;font-size:11.5px;">${escapeHtml(r.resultSummary || r.error || '')}</p>
+                    <p class="muted-sub" style="margin:2px 0 0;font-size:10.5px;">${fmtDateTimeShort(r.startedAt)}</p>
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>`}
         </div>
       </div>
     </div>
+
+    ${hasAutomations ? `
+    <div class="panel" style="margin-bottom:12px;">
+      <h3 style="margin:0 0 4px;font-size:14.5px;">Automation Details</h3>
+      <p class="muted-sub" style="margin:0 0 12px;">Real backend record for each saved automation — including the ID n8n will use to call it.</p>
+      <div class="automation-details-list">
+        ${automations.map(a => {
+          const runs = automationRuns.filter(r => r.automationId === a.id);
+          const rate = automationSuccessRate(a.id);
+          return `<div class="automation-details-card">
+            <div class="automation-details-row"><span class="automation-details-label">Name</span><span class="automation-details-value">${escapeHtml(a.name)}</span></div>
+            <div class="automation-details-row"><span class="automation-details-label">Status</span><span class="automation-details-value"><span class="status-badge" style="background:${a.status === 'active' ? 'rgba(67,211,158,.16)' : 'rgba(116,113,143,.16)'};color:${a.status === 'active' ? 'var(--success)' : 'var(--text-muted)'}">${a.status === 'active' ? 'Active' : 'Paused'}</span></span></div>
+            <div class="automation-details-row"><span class="automation-details-label">Trigger</span><span class="automation-details-value">${escapeHtml(a.trigger || '—')}</span></div>
+            <div class="automation-details-row"><span class="automation-details-label">Condition</span><span class="automation-details-value">${escapeHtml(a.condition || '—')}</span></div>
+            <div class="automation-details-row"><span class="automation-details-label">Action</span><span class="automation-details-value">${escapeHtml(a.action || '—')}</span></div>
+            <div class="automation-details-row"><span class="automation-details-label">Automation ID</span><span class="automation-details-value automation-details-id">
+              <code class="automation-id-code">${escapeHtml(a.id)}</code>
+              <button class="btn btn-ghost btn-sm automation-copy-id-btn" data-id="${escapeHtml(a.id)}">Copy ID</button>
+            </span></div>
+            <div class="automation-details-row"><span class="automation-details-label">Last Run</span><span class="automation-details-value">${fmtDateTimeShort(a.lastRunAt)}</span></div>
+            <div class="automation-details-row"><span class="automation-details-label">Next Run</span><span class="automation-details-value">${fmtDateTimeShort(a.nextRunAt)}</span></div>
+            <div class="automation-details-row"><span class="automation-details-label">Run Count</span><span class="automation-details-value">${runs.length || 'No data yet'}</span></div>
+            <div class="automation-details-row"><span class="automation-details-label">Success Rate</span><span class="automation-details-value">${rate === null ? 'No data yet' : rate + '%'}</span></div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+    ` : ''}
 
     <div class="panel" style="margin-bottom:12px;">
       <h3 style="margin:0 0 4px;font-size:14.5px;">Workflow Preview</h3>
@@ -4069,6 +4167,40 @@ function renderAutomations() {
       `}
     </div>
 
+    ${autoCreateFormOpen ? `
+    <div class="panel" style="margin-bottom:12px;border-color:rgba(139,108,255,.4);">
+      <h3 style="margin:0 0 4px;font-size:14.5px;">Configure: New Lead Follow-Up</h3>
+      <p class="muted-sub" style="margin:0 0 12px;">This is the only automation with real execution logic today. Configuring it saves a real automation record — nothing runs until an external trigger (e.g. n8n) calls it, and only if you activate it.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+        <div>
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Trigger</p>
+          <p style="margin:0;font-size:12.5px;color:var(--text);">${escapeHtml(NEW_LEAD_FOLLOWUP_REAL.trigger)}</p>
+        </div>
+        <div>
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Condition</p>
+          <p style="margin:0;font-size:12.5px;color:var(--text);">${escapeHtml(NEW_LEAD_FOLLOWUP_REAL.condition)}</p>
+        </div>
+        <div style="grid-column:1/-1;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Action</p>
+          <p style="margin:0;font-size:12.5px;color:var(--text);">${escapeHtml(NEW_LEAD_FOLLOWUP_REAL.action)}</p>
+        </div>
+      </div>
+      <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:700;color:var(--text-muted);max-width:360px;margin-bottom:10px;">Automation name
+        <input type="text" id="autoFormName" value="${escapeHtml(NEW_LEAD_FOLLOWUP_REAL.name)}" />
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);margin-bottom:8px;">
+        <input type="checkbox" id="autoFormCreateTask" ${autoCreateFormCreateTask ? 'checked' : ''} /> Also create a follow-up task when this runs
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);margin-bottom:14px;">
+        <input type="checkbox" id="autoFormActivateNow" ${autoCreateFormActivateNow ? 'checked' : ''} /> Activate immediately (otherwise saved paused)
+      </label>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary btn-sm" id="autoFormSaveBtn">Save Automation</button>
+        <button class="btn btn-ghost btn-sm" id="autoFormCancelBtn">Cancel</button>
+      </div>
+    </div>
+    ` : ''}
+
     <div class="panel" style="margin-bottom:12px;">
       <h3 style="margin:0 0 4px;font-size:14.5px;">Automation Templates</h3>
       <p class="muted-sub" style="margin:0 0 12px;">Start with a proven workflow. None are active until you configure one.</p>
@@ -4087,30 +4219,93 @@ function renderAutomations() {
     <div class="panel">
       <h3 style="margin:0 0 4px;font-size:14.5px;">Success Rate &amp; Performance</h3>
       <p class="muted-sub" style="margin:0 0 14px;">Track how your automations are performing over time.</p>
+      ${!perf.total ? `
       <div class="automation-perf-empty">
         <p style="margin:0 0 2px;font-weight:800;color:var(--text);font-size:13px;">No automation data yet</p>
         <p class="muted-sub" style="margin:0;">Run your first automation to see performance analytics here.</p>
-      </div>
+      </div>` : ''}
       <div class="appt-kpi-row" style="grid-template-columns:repeat(4,1fr);margin-top:14px;">
-        <div class="appt-kpi"><div class="appt-kpi-label">Successful Runs</div><div class="appt-kpi-value">0</div><div class="appt-kpi-sub">No data yet</div></div>
-        <div class="appt-kpi"><div class="appt-kpi-label">Failed Runs</div><div class="appt-kpi-value">0</div><div class="appt-kpi-sub">No data yet</div></div>
-        <div class="appt-kpi"><div class="appt-kpi-label">Total Runs</div><div class="appt-kpi-value">0</div><div class="appt-kpi-sub">No data yet</div></div>
-        <div class="appt-kpi"><div class="appt-kpi-label">Success Rate</div><div class="appt-kpi-value">—</div><div class="appt-kpi-sub">No automation runs yet</div></div>
+        <div class="appt-kpi"><div class="appt-kpi-label">Successful Runs</div><div class="appt-kpi-value">${perf.success}</div><div class="appt-kpi-sub">${perf.success ? 'Real executions' : 'No data yet'}</div></div>
+        <div class="appt-kpi"><div class="appt-kpi-label">Failed Runs</div><div class="appt-kpi-value">${perf.failed}</div><div class="appt-kpi-sub">${perf.failed ? 'Real executions' : 'No data yet'}</div></div>
+        <div class="appt-kpi"><div class="appt-kpi-label">Total Runs</div><div class="appt-kpi-value">${perf.total}</div><div class="appt-kpi-sub">${perf.total ? 'Including skipped' : 'No data yet'}</div></div>
+        <div class="appt-kpi"><div class="appt-kpi-label">Success Rate</div><div class="appt-kpi-value">${perf.rate === null ? '—' : perf.rate + '%'}</div><div class="appt-kpi-sub">${perf.rate === null ? 'No automation runs yet' : 'Of completed runs'}</div></div>
       </div>
     </div>
   `;
   initAutomationsInteractions();
 }
+async function saveAutomationFromForm() {
+  const name = ($('#autoFormName')?.value || '').trim() || NEW_LEAD_FOLLOWUP_REAL.name;
+  const createTask = !!$('#autoFormCreateTask')?.checked;
+  const activateNow = !!$('#autoFormActivateNow')?.checked;
+  const res = await fetch('/api/automations', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name, description: NEW_LEAD_FOLLOWUP_REAL.description, trigger: NEW_LEAD_FOLLOWUP_REAL.trigger,
+      condition: NEW_LEAD_FOLLOWUP_REAL.condition, action: NEW_LEAD_FOLLOWUP_REAL.action,
+      type: NEW_LEAD_FOLLOWUP_REAL.type, createTask, status: activateNow ? 'active' : 'paused',
+    }),
+  });
+  if (!res.ok) { showToast('Could not save the automation — please try again.'); return; }
+  autoCreateFormOpen = false;
+  autoCreateFormCreateTask = true;
+  autoCreateFormActivateNow = false;
+  await loadAutomations();
+  showToast(activateNow ? '"New Lead Follow-Up" saved and activated.' : '"New Lead Follow-Up" saved as paused. Activate it when you\'re ready.');
+}
 function initAutomationsInteractions() {
-  const openCreateInfo = () => showToast('Automations run in your workflow platform (n8n, Zapier, or Make) — this CRM doesn\'t have a built-in automation engine yet. Connect one via the booking webhook in Settings.');
-  $('#autoCreateBtn')?.addEventListener('click', openCreateInfo);
-  $('#autoCreateBtnInline')?.addEventListener('click', openCreateInfo);
+  const openCreateForm = () => {
+    autoCreateFormOpen = true;
+    renderAutomations();
+    document.querySelector('#autoFormSaveBtn')?.closest('.panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  $('#autoCreateBtn')?.addEventListener('click', openCreateForm);
+  $('#autoCreateBtnInline')?.addEventListener('click', openCreateForm);
   $('#autoWorkflowSelect')?.addEventListener('change', (e) => { autoSelectedTemplateId = e.target.value; renderAutomations(); });
+  $('#autoFormSaveBtn')?.addEventListener('click', saveAutomationFromForm);
+  $('#autoFormCancelBtn')?.addEventListener('click', () => { autoCreateFormOpen = false; renderAutomations(); });
+  $('#automationsContent').querySelectorAll('.automation-copy-id-btn').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.dataset.id;
+    function legacyCopy() {
+      const ta = document.createElement('textarea');
+      ta.value = id; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      const worked = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return worked;
+    }
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(id);
+      } else if (!legacyCopy()) {
+        throw new Error('execCommand copy failed');
+      }
+      showToast('Automation ID copied');
+    } catch (err) {
+      // Modern Clipboard API can be blocked by permissions policy in some
+      // embedded/automated contexts even on a real click — fall back to the
+      // legacy method before giving up.
+      if (legacyCopy()) showToast('Automation ID copied');
+      else showToast('Could not copy automation ID — please copy it manually.');
+    }
+  }));
+  $('#automationsContent').querySelectorAll('.automation-toggle-btn').forEach(btn => btn.addEventListener('click', async () => {
+    const res = await fetch(`/api/automations/${btn.dataset.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: btn.dataset.next }),
+    });
+    if (res.ok) { await loadAutomations(); showToast(`Automation ${btn.dataset.next === 'active' ? 'activated' : 'paused'}.`); }
+  }));
   $('#automationsContent').querySelectorAll('.automation-use-template-btn').forEach(btn => btn.addEventListener('click', () => {
     const t = AUTOMATION_TEMPLATES.find(x => x.id === btn.dataset.id);
     autoSelectedTemplateId = btn.dataset.id;
-    renderAutomations();
-    showToast(`"${t.name}" is a template preview — configure this workflow in n8n, Zapier, or Make to make it real.`);
+    if (t.id === 'new-lead-followup') {
+      autoCreateFormOpen = true;
+      renderAutomations();
+      showToast('"New Lead Follow-Up" is backed by a real automation — configure and save it below.');
+    } else {
+      renderAutomations();
+      showToast(`"${t.name}" is a template preview — configure this workflow in n8n, Zapier, or Make to make it real.`);
+    }
   }));
 }
 
@@ -5427,14 +5622,18 @@ const KAI_HANDLERS = {
     const top = [...notSaved].sort((a, b) => b.matchScore - a.matchScore)[0];
     return { text: `Review this one first:\n\n${top.title}\n${top.matchScore}% ${jobMatchLabel(top.matchScore)}${top.matchConfidence ? ` (confidence: ${top.matchConfidence})` : ''}` };
   },
-  // Read-only: explains what automation data actually exists (none, beyond
-  // the booking webhook) — never claims a real automation is running.
+  // Read-only: reports the REAL automation state loaded from the backend —
+  // never claims history or activity that isn't actually recorded.
   automationsSummary() {
     const kpis = automationsKpis();
-    return { text: `This CRM doesn't have a built-in automation engine yet, so there's no automation history to report: ${kpis.active} active automations, no scheduled runs, no recorded task/follow-up creation from automations. The one real automation-adjacent capability is the booking webhook, which creates contacts directly from your workflow platform (n8n, Zapier, or Make).` };
+    if (!automations.length) {
+      return { text: `No automations have been created yet. ${kpis.active} active, no runs recorded. The one other automation-adjacent capability is the booking webhook, which creates contacts directly from your workflow platform (n8n, Zapier, or Make).` };
+    }
+    const rateText = kpis.successRate === null ? 'no completed runs yet' : `${kpis.successRate}% success rate`;
+    return { text: `${automations.length} automation${automations.length === 1 ? '' : 's'} saved, ${kpis.active} active. ${kpis.followupsCreated} follow-up${kpis.followupsCreated === 1 ? '' : 's'} and ${kpis.tasksGenerated} task${kpis.tasksGenerated === 1 ? '' : 's'} created by automation so far, ${rateText}.` };
   },
   automationsWebhookStatus() {
-    return { text: `Real, working endpoint: POST ${window.location.origin}/api/webhook/booking — any booking automation that posts name/email/phone/service/bookingDate/bookingTime/meetingLink/notes/value to this URL will create a real contact here.` };
+    return { text: `Real, working endpoint: POST ${window.location.origin}/api/webhook/booking — any booking automation that posts name/email/phone/service/bookingDate/bookingTime/meetingLink/notes/value to this URL will create a real contact here. Automation execution reporting (for n8n) goes to POST ${window.location.origin}/api/automations/execute, which requires a server-side shared secret and is not callable from this browser.` };
   },
 };
 
@@ -6270,4 +6469,6 @@ loadJobProfile();
 loadJobFinderKeywords();
 loadJobFinderHistory();
 loadJobFinderStatus();
-setInterval(() => { loadContacts(); loadTasks(); loadInvoices(); loadProjects(); loadDocuments(); loadJobs(); }, 15000);
+loadAutomations();
+loadAutomationRuns();
+setInterval(() => { loadContacts(); loadTasks(); loadInvoices(); loadProjects(); loadDocuments(); loadJobs(); loadAutomations(); loadAutomationRuns(); }, 15000);
