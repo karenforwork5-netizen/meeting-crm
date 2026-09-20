@@ -4113,7 +4113,7 @@ function renderAutomations() {
         ${automations.map(a => {
           const runs = automationRuns.filter(r => r.automationId === a.id);
           const rate = automationSuccessRate(a.id);
-          return `<div class="automation-details-card">
+          return `<div class="automation-details-card" data-automation-id="${escapeHtml(a.id)}">
             <div class="automation-details-row"><span class="automation-details-label">Name</span><span class="automation-details-value">${escapeHtml(a.name)}</span></div>
             <div class="automation-details-row"><span class="automation-details-label">Status</span><span class="automation-details-value"><span class="status-badge" style="background:${a.status === 'active' ? 'rgba(67,211,158,.16)' : 'rgba(116,113,143,.16)'};color:${a.status === 'active' ? 'var(--success)' : 'var(--text-muted)'}">${a.status === 'active' ? 'Active' : 'Paused'}</span></span></div>
             <div class="automation-details-row"><span class="automation-details-label">Trigger</span><span class="automation-details-value">${escapeHtml(a.trigger || '—')}</span></div>
@@ -4247,10 +4247,17 @@ async function saveAutomationFromForm() {
     }),
   });
   if (!res.ok) { showToast('Could not save the automation — please try again.'); return; }
+  const created = await res.json();
   autoCreateFormOpen = false;
   autoCreateFormCreateTask = true;
   autoCreateFormActivateNow = false;
   await loadAutomations();
+  // The Automation Details card (with the real ID) renders well below the
+  // fold on a typical viewport — without this, a newly saved automation's
+  // ID is invisible until the user scrolls, same class of issue as the
+  // create-form visibility fix.
+  document.querySelector(`.automation-details-card[data-automation-id="${created.id}"]`)
+    ?.scrollIntoView({ block: 'start' });
   showToast(activateNow ? '"New Lead Follow-Up" saved and activated.' : '"New Lead Follow-Up" saved as paused. Activate it when you\'re ready.');
 }
 function initAutomationsInteractions() {
