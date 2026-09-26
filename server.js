@@ -52,11 +52,11 @@ const JOB_STATUSES = ['Saved', 'Reviewing', 'Ready to Apply', 'Applied', 'Follow
 const CREATED_BY_VALUES = ['manual', 'api', 'import', 'integration', 'automation'];
 const AUTOMATION_STATUSES = ['active', 'paused'];
 const AUTOMATION_RUN_STATUSES = ['running', 'success', 'failed', 'skipped'];
-// The only automation type with real execution logic behind it right now.
-// An automation record with any other/missing `type` can be saved (as a
-// template/config) but will honestly fail — never silently no-op — if
-// something ever tries to execute it.
-const AUTOMATION_TYPES = ['new_lead_followup'];
+// Automation types with real execution logic behind them. An automation
+// record with any other/missing `type` can be saved (as a template/config)
+// but will honestly fail — never silently no-op — if something ever tries
+// to execute it.
+const AUTOMATION_TYPES = ['new_lead_followup', 'appointment_reminder'];
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -777,66 +777,115 @@ app.post('/api/automations/execute', (req, res) => {
     return res.status(200).json({ status: 'skipped', reason: 'automation is paused', run });
   }
 
-  if (automation.type !== 'new_lead_followup') {
-    const run = recordRun('failed', 'no execution handler for this automation type', '');
-    return res.status(400).json({ status: 'failed', error: 'no execution handler for this automation type', run });
-  }
-
-  if (!contactId) {
-    const run = recordRun('failed', 'contactId is required for this automation type', '');
-    return res.status(400).json({ status: 'failed', error: 'contactId is required for this automation type', run });
-  }
-
-  const contacts = readContacts();
-  const contactIdx = contacts.findIndex(c => c.id === contactId);
-  if (contactIdx === -1) {
-    const run = recordRun('failed', 'contact not found', '');
-    return res.status(404).json({ status: 'failed', error: 'contact not found', run });
-  }
-  const contact = contacts[contactIdx];
-
-  // Eligibility — ONLY real, existing contact fields. No invented lead-scoring.
-  const hasContactInfo = !!(contact.email || contact.phone);
-  const isNewLead = contact.sourceStatus === 'New';
-  if (!hasContactInfo || !isNewLead) {
-    const run = recordRun('skipped', '', 'Contact is not eligible (requires an email or phone, and sourceStatus === "New")');
-    return res.status(200).json({ status: 'skipped', reason: 'contact not eligible', run });
-  }
-
-  // Duplicate-follow-up protection: never overwrite an already-scheduled future follow-up.
-  const today = new Date().toISOString().slice(0, 10);
-  if (contact.nextFollowUp && contact.nextFollowUp >= today) {
-    const run = recordRun('skipped', '', `Contact already has an upcoming follow-up on ${contact.nextFollowUp}`);
-    return res.status(200).json({ status: 'skipped', reason: 'contact already has an upcoming follow-up', run });
-  }
-
-  const followUpDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  contacts[contactIdx] = { ...contact, nextFollowUp: followUpDate, lastActivity: new Date().toISOString() };
-  writeContacts(contacts);
-
-  let createdTask = null;
-  if (automation.createTask) {
-    const tasks = tasksStore.read();
-    const alreadyOpen = tasks.some(t => t.contactId === contactId && t.automationId === automationId && t.status === 'open');
-    if (!alreadyOpen) {
-      createdTask = {
-        id: crypto.randomUUID(), title: `Follow up with ${contact.name}`, contactId, projectId: '',
-        dueDate: followUpDate, priority: 'Medium', status: 'open', createdAt: new Date().toISOString(), completedAt: '',
-        automationId, createdBy: 'automation',
-      };
-      tasks.unshift(createdTask);
-      tasksStore.write(tasks);
+  if (automation.type === 'new_lead_followup') {
+    if (!contactId) {
+      const run = recordRun('failed', 'contactId is required for this automation type', '');
+      return res.status(400).json({ status: 'failed', error: 'contactId is required for this automation type', run });
     }
+
+    const contacts = readContacts();
+    const contactIdx = contacts.findIndex(c => c.id === contactId);
+    if (contactIdx === -1) {
+      const run = recordRun('failed', 'contact not found', '');
+      return res.status(404).json({ status: 'failed', error: 'contact not found', run });
+    }
+    const contact = contacts[contactIdx];
+
+    // Eligibility — ONLY real, existing contact fields. No invented lead-scoring.
+    const hasContactInfo = !!(contact.email || contact.phone);
+    const isNewLead = contact.sourceStatus === 'New';
+    if (!hasContactInfo || !isNewLead) {
+      const run = recordRun('skipped', '', 'Contact is not eligible (requires an email or phone, and sourceStatus === "New")');
+      return res.status(200).json({ status: 'skipped', reason: 'contact not eligible', run });
+    }
+
+    // Duplicate-follow-up protection: never overwrite an already-scheduled future follow-up.
+    const today = new Date().toISOString().slice(0, 10);
+    if (contact.nextFollowUp && contact.nextFollowUp >= today) {
+      const run = recordRun('skipped', '', `Contact already has an upcoming follow-up on ${contact.nextFollowUp}`);
+      return res.status(200).json({ status: 'skipped', reason: 'contact already has an upcoming follow-up', run });
+    }
+
+    const followUpDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    contacts[contactIdx] = { ...contact, nextFollowUp: followUpDate, lastActivity: new Date().toISOString() };
+    writeContacts(contacts);
+
+    let createdTask = null;
+    if (automation.createTask) {
+      const tasks = tasksStore.read();
+      const alreadyOpen = tasks.some(t => t.contactId === contactId && t.automationId === automationId && t.status === 'open');
+      if (!alreadyOpen) {
+        createdTask = {
+          id: crypto.randomUUID(), title: `Follow up with ${contact.name}`, contactId, projectId: '',
+          dueDate: followUpDate, priority: 'Medium', status: 'open', createdAt: new Date().toISOString(), completedAt: '',
+          automationId, createdBy: 'automation',
+        };
+        tasks.unshift(createdTask);
+        tasksStore.write(tasks);
+      }
+    }
+
+    automations[automationIdx] = { ...automation, lastRunAt: new Date().toISOString() };
+    automationsStore.write(automations);
+
+    const summary = [`Set nextFollowUp to ${followUpDate}`];
+    if (automation.createTask) summary.push(createdTask ? 'created a follow-up task' : 'follow-up task already existed, skipped duplicate');
+    const run = recordRun('success', '', summary.join('; '));
+
+    return res.status(200).json({ status: 'success', run, contact: contacts[contactIdx], task: createdTask });
   }
 
-  automations[automationIdx] = { ...automation, lastRunAt: new Date().toISOString() };
-  automationsStore.write(automations);
+  if (automation.type === 'appointment_reminder') {
+    // Validation-only for now — no email/SMS/WhatsApp/etc is sent here. This
+    // checks eligibility using ONLY real, existing Contact fields and hands
+    // back the exact context (bookingDate/bookingTime/meetingLink) an n8n
+    // notification step would need, without inventing any of them.
+    if (!contactId) {
+      const run = recordRun('failed', 'contactId is required for this automation type', '');
+      return res.status(400).json({ status: 'failed', error: 'contactId is required for this automation type', run });
+    }
 
-  const summary = [`Set nextFollowUp to ${followUpDate}`];
-  if (automation.createTask) summary.push(createdTask ? 'created a follow-up task' : 'follow-up task already existed, skipped duplicate');
-  const run = recordRun('success', '', summary.join('; '));
+    const contacts = readContacts();
+    const contact = contacts.find(c => c.id === contactId);
+    if (!contact) {
+      const run = recordRun('failed', 'contact not found', '');
+      return res.status(404).json({ status: 'failed', error: 'contact not found', run });
+    }
 
-  res.status(200).json({ status: 'success', run, contact: contacts[contactIdx], task: createdTask });
+    // Same local-date convention already used above for New Lead Follow-Up's
+    // `today` (ISO-string slice, not a rolling 24h window): tomorrow is
+    // exactly "today + 1 calendar day", never "now + 24 hours".
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const isLost = contact.stage === 'lost';
+    const isTomorrow = contact.bookingDate === tomorrow;
+
+    if (!contact.bookingDate || isLost || !isTomorrow) {
+      let reason;
+      if (!contact.bookingDate) reason = 'Contact has no bookingDate';
+      else if (isLost) reason = 'Contact stage is "lost"';
+      else reason = `bookingDate (${contact.bookingDate}) is not tomorrow (${tomorrow})`;
+      const run = recordRun('skipped', '', reason);
+      return res.status(200).json({ status: 'skipped', reason: 'appointment not eligible', run });
+    }
+
+    // Preserve exactly what's stored — never invent a bookingTime or meetingLink.
+    const context = {
+      contactId: contact.id,
+      name: contact.name,
+      bookingDate: contact.bookingDate,
+      bookingTime: contact.bookingTime || '',
+      meetingLink: contact.meetingLink || '',
+    };
+
+    automations[automationIdx] = { ...automation, lastRunAt: new Date().toISOString() };
+    automationsStore.write(automations);
+
+    const run = recordRun('success', '', `Appointment reminder eligible for ${contact.name} on ${contact.bookingDate}${contact.bookingTime ? ' at ' + contact.bookingTime : ''}`);
+    return res.status(200).json({ status: 'success', run, context });
+  }
+
+  const run = recordRun('failed', 'no execution handler for this automation type', '');
+  return res.status(400).json({ status: 'failed', error: 'no execution handler for this automation type', run });
 });
 
 const server = app.listen(PORT, () => {

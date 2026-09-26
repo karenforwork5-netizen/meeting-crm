@@ -3963,18 +3963,20 @@ function pctChangeLabel(current, previous) {
 
 /* ================= Automation Command Center =================
    Backed by a real automation engine now (server.js: /api/automations,
-   /api/automation-runs, /api/automations/execute) — but only ONE automation
-   type has real execution logic behind it: 'new_lead_followup'. The 7 cards
-   in AUTOMATION_TEMPLATES below remain design-concept previews (their
-   trigger/condition/action text is illustrative, not necessarily identical
-   to any real handler); NEW_LEAD_FOLLOWUP_REAL is the one template that maps
-   to an actual backend implementation, so its config form uses the true
-   trigger/condition/action text the server actually executes, not the
-   template's preview copy. Every KPI/table/activity value below is computed
-   from real `automations`/`automationRuns`/`tasks` data — nothing here
-   invents history, active workflows, or performance data. ================= */
+   /api/automation-runs, /api/automations/execute) — two automation types
+   have real execution logic behind them: 'new_lead_followup' and
+   'appointment_reminder'. The remaining cards in AUTOMATION_TEMPLATES stay
+   design-concept previews (their trigger/condition/action text is
+   illustrative, not necessarily identical to any real handler);
+   NEW_LEAD_FOLLOWUP_REAL / APPOINTMENT_REMINDER_REAL map to actual backend
+   implementations, so their config form uses the true trigger/condition/
+   action text the server actually executes, not the template's preview
+   copy. Every KPI/table/activity value below is computed from real
+   `automations`/`automationRuns`/`tasks` data — nothing here invents
+   history, active workflows, or performance data. ================= */
 let autoSelectedTemplateId = '';
 let autoCreateFormOpen = false;
+let autoCreateFormType = 'new_lead_followup';
 let autoCreateFormCreateTask = true;
 let autoCreateFormActivateNow = false;
 const NEW_LEAD_FOLLOWUP_REAL = {
@@ -3985,6 +3987,15 @@ const NEW_LEAD_FOLLOWUP_REAL = {
   condition: 'Contact has an email or phone number, and sourceStatus is "New"',
   action: 'Set nextFollowUp 2 days out (optionally also create a follow-up task)',
 };
+const APPOINTMENT_REMINDER_REAL = {
+  type: 'appointment_reminder',
+  name: 'Appointment Reminder',
+  description: 'Check whether a contact\'s appointment is tomorrow and prepare context for a reminder.',
+  trigger: 'Appointment reminder event',
+  condition: 'Contact has a bookingDate for tomorrow and stage is not "lost"',
+  action: 'Validate appointment and prepare reminder context for n8n',
+};
+function autoRealConfigFor(type) { return type === 'appointment_reminder' ? APPOINTMENT_REMINDER_REAL : NEW_LEAD_FOLLOWUP_REAL; }
 const AUTOMATION_TEMPLATES = [
   { id: 'new-lead-followup', icon: '🆕', name: 'New Lead Follow-Up', description: 'Follow up automatically when a new lead comes in.',
     trigger: 'New contact added', condition: 'Does the contact have an upcoming appointment?', action: 'Create a follow-up', result: 'Follow-up created' },
@@ -4167,30 +4178,34 @@ function renderAutomations() {
       `}
     </div>
 
-    ${autoCreateFormOpen ? `
+    ${autoCreateFormOpen ? (() => {
+      const formConfig = autoRealConfigFor(autoCreateFormType);
+      return `
     <div class="panel" style="margin-bottom:12px;border-color:rgba(139,108,255,.4);">
-      <h3 style="margin:0 0 4px;font-size:14.5px;">Configure: New Lead Follow-Up</h3>
-      <p class="muted-sub" style="margin:0 0 12px;">This is the only automation with real execution logic today. Configuring it saves a real automation record — nothing runs until an external trigger (e.g. n8n) calls it, and only if you activate it.</p>
+      <h3 style="margin:0 0 4px;font-size:14.5px;">Configure: ${escapeHtml(formConfig.name)}</h3>
+      <p class="muted-sub" style="margin:0 0 12px;">This automation has real execution logic today. Configuring it saves a real automation record — nothing runs until an external trigger (e.g. n8n) calls it, and only if you activate it.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Trigger</p>
-          <p style="margin:0;font-size:12.5px;color:var(--text);">${escapeHtml(NEW_LEAD_FOLLOWUP_REAL.trigger)}</p>
+          <p style="margin:0;font-size:12.5px;color:var(--text);">${escapeHtml(formConfig.trigger)}</p>
         </div>
         <div>
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Condition</p>
-          <p style="margin:0;font-size:12.5px;color:var(--text);">${escapeHtml(NEW_LEAD_FOLLOWUP_REAL.condition)}</p>
+          <p style="margin:0;font-size:12.5px;color:var(--text);">${escapeHtml(formConfig.condition)}</p>
         </div>
         <div style="grid-column:1/-1;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Action</p>
-          <p style="margin:0;font-size:12.5px;color:var(--text);">${escapeHtml(NEW_LEAD_FOLLOWUP_REAL.action)}</p>
+          <p style="margin:0;font-size:12.5px;color:var(--text);">${escapeHtml(formConfig.action)}</p>
         </div>
       </div>
       <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:700;color:var(--text-muted);max-width:360px;margin-bottom:10px;">Automation name
-        <input type="text" id="autoFormName" value="${escapeHtml(NEW_LEAD_FOLLOWUP_REAL.name)}" />
+        <input type="text" id="autoFormName" value="${escapeHtml(formConfig.name)}" />
       </label>
+      ${formConfig.type === 'new_lead_followup' ? `
       <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);margin-bottom:8px;">
         <input type="checkbox" id="autoFormCreateTask" ${autoCreateFormCreateTask ? 'checked' : ''} /> Also create a follow-up task when this runs
-      </label>
+      </label>` : `
+      <p class="muted-sub" style="margin:0 0 8px;">This first implementation validates eligibility and records the run only — it does not send an email, SMS, WhatsApp message, or create a task yet.</p>`}
       <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);margin-bottom:14px;">
         <input type="checkbox" id="autoFormActivateNow" ${autoCreateFormActivateNow ? 'checked' : ''} /> Activate immediately (otherwise saved paused)
       </label>
@@ -4199,7 +4214,7 @@ function renderAutomations() {
         <button class="btn btn-ghost btn-sm" id="autoFormCancelBtn">Cancel</button>
       </div>
     </div>
-    ` : ''}
+    `; })() : ''}
 
     <div class="panel" style="margin-bottom:12px;">
       <h3 style="margin:0 0 4px;font-size:14.5px;">Automation Templates</h3>
@@ -4235,20 +4250,22 @@ function renderAutomations() {
   initAutomationsInteractions();
 }
 async function saveAutomationFromForm() {
-  const name = ($('#autoFormName')?.value || '').trim() || NEW_LEAD_FOLLOWUP_REAL.name;
-  const createTask = !!$('#autoFormCreateTask')?.checked;
+  const formConfig = autoRealConfigFor(autoCreateFormType);
+  const name = ($('#autoFormName')?.value || '').trim() || formConfig.name;
+  const createTask = formConfig.type === 'new_lead_followup' && !!$('#autoFormCreateTask')?.checked;
   const activateNow = !!$('#autoFormActivateNow')?.checked;
   const res = await fetch('/api/automations', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      name, description: NEW_LEAD_FOLLOWUP_REAL.description, trigger: NEW_LEAD_FOLLOWUP_REAL.trigger,
-      condition: NEW_LEAD_FOLLOWUP_REAL.condition, action: NEW_LEAD_FOLLOWUP_REAL.action,
-      type: NEW_LEAD_FOLLOWUP_REAL.type, createTask, status: activateNow ? 'active' : 'paused',
+      name, description: formConfig.description, trigger: formConfig.trigger,
+      condition: formConfig.condition, action: formConfig.action,
+      type: formConfig.type, createTask, status: activateNow ? 'active' : 'paused',
     }),
   });
   if (!res.ok) { showToast('Could not save the automation — please try again.'); return; }
   const created = await res.json();
   autoCreateFormOpen = false;
+  autoCreateFormType = 'new_lead_followup';
   autoCreateFormCreateTask = true;
   autoCreateFormActivateNow = false;
   await loadAutomations();
@@ -4258,11 +4275,12 @@ async function saveAutomationFromForm() {
   // create-form visibility fix.
   document.querySelector(`.automation-details-card[data-automation-id="${created.id}"]`)
     ?.scrollIntoView({ block: 'start' });
-  showToast(activateNow ? '"New Lead Follow-Up" saved and activated.' : '"New Lead Follow-Up" saved as paused. Activate it when you\'re ready.');
+  showToast(activateNow ? `"${formConfig.name}" saved and activated.` : `"${formConfig.name}" saved as paused. Activate it when you're ready.`);
 }
 function initAutomationsInteractions() {
   const openCreateForm = () => {
     autoCreateFormOpen = true;
+    autoCreateFormType = 'new_lead_followup';
     renderAutomations();
     document.querySelector('#autoFormSaveBtn')?.closest('.panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
@@ -4305,10 +4323,11 @@ function initAutomationsInteractions() {
   $('#automationsContent').querySelectorAll('.automation-use-template-btn').forEach(btn => btn.addEventListener('click', () => {
     const t = AUTOMATION_TEMPLATES.find(x => x.id === btn.dataset.id);
     autoSelectedTemplateId = btn.dataset.id;
-    if (t.id === 'new-lead-followup') {
+    if (t.id === 'new-lead-followup' || t.id === 'appointment-reminder') {
+      autoCreateFormType = t.id === 'appointment-reminder' ? 'appointment_reminder' : 'new_lead_followup';
       autoCreateFormOpen = true;
       renderAutomations();
-      showToast('"New Lead Follow-Up" is backed by a real automation — configure and save it below.');
+      showToast(`"${t.name}" is backed by a real automation — configure and save it below.`);
     } else {
       renderAutomations();
       showToast(`"${t.name}" is a template preview — configure this workflow in n8n, Zapier, or Make to make it real.`);
