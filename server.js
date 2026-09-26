@@ -61,6 +61,28 @@ const AUTOMATION_TYPES = ['new_lead_followup', 'appointment_reminder'];
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Fire-and-forget notification to the n8n "Appointment Reminder" workflow's
+// webhook trigger. Never awaited by a contact route — a slow/offline/erroring
+// n8n must never delay or fail a CRM contact save. The URL lives only in
+// process.env (set via .env locally / Railway variables in production),
+// never hardcoded and never logged.
+async function postToN8nAppointmentWebhook(payload) {
+  const url = process.env.N8N_APPOINTMENT_WEBHOOK_URL;
+  if (!url) {
+    console.warn('[n8n] N8N_APPOINTMENT_WEBHOOK_URL is not set — skipping appointment webhook.');
+    return;
+  }
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    console.warn('[n8n] Appointment webhook failed:', error.message);
+  }
+}
+
 // A fresh/empty contacts store starts genuinely empty — no fabricated demo
 // contacts are ever auto-inserted. The real CRM has never needed synthetic
 // leads to function; an empty list is the honest starting state.
@@ -191,6 +213,9 @@ app.post('/api/contacts', (req, res) => {
   const contacts = readContacts();
   contacts.unshift(contact);
   writeContacts(contacts);
+  if (contact.bookingDate || contact.bookingTime) {
+    postToN8nAppointmentWebhook({ appointmentId: contact.id, contactId: contact.id, status: 'scheduled' }).catch(() => {});
+  }
   res.status(201).json(contact);
 });
 
@@ -230,6 +255,9 @@ app.patch('/api/contacts/:id', (req, res) => {
   }
   contacts[idx] = { ...contacts[idx], ...updates, lastActivity: new Date().toISOString() };
   writeContacts(contacts);
+  if (updates.bookingDate !== undefined || updates.bookingTime !== undefined) {
+    postToN8nAppointmentWebhook({ appointmentId: contacts[idx].id, contactId: contacts[idx].id, status: 'scheduled' }).catch(() => {});
+  }
   res.json(contacts[idx]);
 });
 
